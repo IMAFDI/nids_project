@@ -32,4 +32,4 @@ data['target_column'] = 0
 data.loc[anomaly_indices, 'target_column'] = 1
 
 # Save the dataset to a CSV file
-data.to_csv('anomaly_detection_data.csv', index=False)
+data.to_csv('models/anomaly_detection_data.csv', index=False)

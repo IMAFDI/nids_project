@@ -1,9 +1,9 @@
 {
-    "thresholds": {
-      "tcp_syn_flood": 100,
-      "udp_flood": 50,
-      "icmp_echo_request_flood": 20
-    }
-  }
-
-  
+  "tcp_syn_flood": 100,
+  "udp_flood": 50,
+  "icmp_echo_request_flood": 20,
+  "port_scan": 20,
+  "ssh_brute_force": 10,
+  "http_flood": 50,
+  "anomaly_score_threshold": -0.1
+}

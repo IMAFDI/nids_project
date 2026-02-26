@@ -1,37 +1,73 @@
 {
-    "rules": [
-      {
-        "id": 1,
-        "description": "Detect TCP SYN flood",
-        "protocol": "tcp",
-        "src_ip": "any",
-        "dst_ip": "any",
-        "src_port": "any",
-        "dst_port": "any",
-        "flags": "SYN",
-        "threshold": 100,
-        "time_window": 60
-      },
-      {
-        "id": 2,
-        "description": "Detect UDP flood",
-        "protocol": "udp",
-        "src_ip": "any",
-        "dst_ip": "any",
-        "src_port": "any",
-        "dst_port": "any",
-        "threshold": 50,
-        "time_window": 30
-      },
-      {
-        "id": 3,
-        "description": "Detect ICMP echo request flood",
-        "protocol": "icmp",
-        "src_ip": "any",
-        "dst_ip": "any",
-        "type": "echo-request",
-        "threshold": 20,
-        "time_window": 10
-      }
-    ]
-  }
+  "rules": [
+    {
+      "id": 1,
+      "description": "TCP SYN Flood",
+      "protocol": "tcp",
+      "src_ip": "any",
+      "dst_ip": "any",
+      "src_port": "any",
+      "dst_port": "any",
+      "flags": "SYN",
+      "threshold": 100,
+      "time_window": 60
+    },
+    {
+      "id": 2,
+      "description": "UDP Flood",
+      "protocol": "udp",
+      "src_ip": "any",
+      "dst_ip": "any",
+      "src_port": "any",
+      "dst_port": "any",
+      "threshold": 50,
+      "time_window": 30
+    },
+    {
+      "id": 3,
+      "description": "ICMP Echo Request Flood",
+      "protocol": "icmp",
+      "src_ip": "any",
+      "dst_ip": "any",
+      "type": "echo-request",
+      "threshold": 20,
+      "time_window": 10
+    },
+    {
+      "id": 4,
+      "description": "Port Scan Detected",
+      "protocol": "tcp",
+      "src_ip": "any",
+      "dst_ip": "any",
+      "src_port": "any",
+      "dst_port": "any",
+      "flags": "SYN",
+      "threshold": 20,
+      "time_window": 10
+    },
+    {
+      "id": 5,
+      "description": "Suspicious SSH Brute Force",
+      "protocol": "tcp",
+      "src_ip": "any",
+      "dst_ip": "any",
+      "src_port": "any",
+      "dst_port": 22,
+      "flags": "SYN",
+      "threshold": 10,
+      "time_window": 30
+    },
+    {
+      "id": 6,
+      "description": "Suspicious HTTP Flood",
+      "protocol": "tcp",
+      "src_ip": "any",
+      "dst_ip": "any",
+      "src_port": "any",
+      "dst_port": 80,
+      "flags": "SYN",
+      "threshold": 50,
+      "time_window": 30
+    }
+  ]
+}

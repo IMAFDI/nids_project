@@ -1,6 +1,7 @@
-Scapy
-PyShark
-Scikit-learn
-JSON
-Logging
-Click
+scapy>=2.5.0
+scikit-learn>=1.3.0
+joblib>=1.3.0
+pandas>=2.0.0
+numpy>=1.24.0
+click>=8.1.0
+flask>=3.0.0
