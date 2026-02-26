@@ -133,7 +133,7 @@ def interfaces():
 
 @cli.command()
 @click.option('--port', default=5000, show_default=True, help='Dashboard port.')
-@click.option('--host', default='0.0.0.0', show_default=True, help='Dashboard host.')
+@click.option('--host', default='127.0.0.1', show_default=True, help='Dashboard host.')
 def dashboard(port, host):
     """Launch only the web dashboard (reads from existing DB, no capture)."""
     from dashboard import run_dashboard

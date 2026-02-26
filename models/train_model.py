@@ -33,22 +33,110 @@ np.random.seed(RANDOM_SEED)
 
 # ---------------------------------------------------------------------------
 # 1. Generate synthetic normal network traffic
+#    Covers realistic macOS/Linux traffic patterns seen in the wild:
+#    HTTPS (TLS), HTTP, DNS, SSH keepalives, iCloud, GitHub, Azure, AWS, etc.
 # ---------------------------------------------------------------------------
-N_NORMAL = 8000
+N_NORMAL = 12000
 
-normal = pd.DataFrame({
-    'packet_length':  np.random.randint(40, 1500, N_NORMAL),
-    'protocol':       np.random.choice([6, 17, 1], N_NORMAL, p=[0.7, 0.25, 0.05]),
-    'src_port':       np.random.randint(1024, 65535, N_NORMAL),
-    'dst_port':       np.random.choice([80, 443, 53, 22, 8080, 3306], N_NORMAL),
-    'tcp_flags':      np.random.choice([0x02, 0x10, 0x18, 0x11, 0x00], N_NORMAL),  # SYN,ACK,PSH-ACK,FIN-ACK,none
-    'icmp_type':      np.zeros(N_NORMAL, dtype=int),
-    'payload_length': np.random.randint(0, 1460, N_NORMAL),
-    'is_fragmented':  np.random.choice([0, 1], N_NORMAL, p=[0.98, 0.02]),
-    'ttl':            np.random.choice([64, 128, 255], N_NORMAL),
-    'header_length':  np.full(N_NORMAL, 20),
-    'target_column':  np.zeros(N_NORMAL, dtype=int),   # 0 = normal
+# --- HTTPS / TLS traffic (dominant on modern machines) ---
+# Typical TLS record sizes: 66 (ACK), 74 (SYN-ACK), ~1490 (data), ~90-200 (handshake)
+n_https = N_NORMAL // 3
+https_lengths = np.concatenate([
+    np.full(n_https // 5, 54),    # bare ACK
+    np.full(n_https // 5, 66),    # ACK with timestamp option
+    np.full(n_https // 5, 74),    # SYN-ACK
+    np.random.randint(80, 300, n_https // 5),   # TLS handshake
+    np.random.randint(800, 1514, n_https - 4 * (n_https // 5)),  # TLS data
+])
+np.random.shuffle(https_lengths)
+https_traffic = pd.DataFrame({
+    'packet_length':  https_lengths,
+    'protocol':       np.full(n_https, 6),
+    'src_port':       np.random.randint(1024, 65535, n_https),
+    'dst_port':       np.random.choice([443, 8443], n_https),
+    'tcp_flags':      np.random.choice([0x02, 0x10, 0x18, 0x11, 0x12], n_https,
+                                       p=[0.1, 0.5, 0.2, 0.1, 0.1]),
+    'icmp_type':      np.zeros(n_https, dtype=int),
+    'payload_length': np.clip(https_lengths - 40, 0, 1460),
+    'is_fragmented':  np.zeros(n_https, dtype=int),
+    'ttl':            np.random.choice([49, 51, 52, 54, 55, 56, 57, 58, 60,
+                                        64, 115, 117, 118, 119, 120, 128], n_https),
+    'header_length':  np.full(n_https, 20),
+    'target_column':  np.zeros(n_https, dtype=int),
 })
+
+# --- HTTP traffic ---
+n_http = N_NORMAL // 6
+http_lengths = np.concatenate([
+    np.random.randint(40, 200, n_http // 2),
+    np.random.randint(200, 1514, n_http - n_http // 2),
+])
+http_traffic = pd.DataFrame({
+    'packet_length':  http_lengths,
+    'protocol':       np.full(n_http, 6),
+    'src_port':       np.random.randint(1024, 65535, n_http),
+    'dst_port':       np.random.choice([80, 8080, 8000], n_http),
+    'tcp_flags':      np.random.choice([0x02, 0x10, 0.18, 0x11], n_http),
+    'icmp_type':      np.zeros(n_http, dtype=int),
+    'payload_length': np.clip(http_lengths - 40, 0, 1460),
+    'is_fragmented':  np.zeros(n_http, dtype=int),
+    'ttl':            np.random.choice([64, 128, 255, 56, 57, 58], n_http),
+    'header_length':  np.full(n_http, 20),
+    'target_column':  np.zeros(n_http, dtype=int),
+})
+
+# --- DNS traffic ---
+n_dns = N_NORMAL // 8
+dns_traffic = pd.DataFrame({
+    'packet_length':  np.random.randint(60, 512, n_dns),
+    'protocol':       np.full(n_dns, 17),
+    'src_port':       np.random.randint(1024, 65535, n_dns),
+    'dst_port':       np.full(n_dns, 53),
+    'tcp_flags':      np.zeros(n_dns, dtype=int),
+    'icmp_type':      np.zeros(n_dns, dtype=int),
+    'payload_length': np.random.randint(20, 470, n_dns),
+    'is_fragmented':  np.zeros(n_dns, dtype=int),
+    'ttl':            np.random.choice([64, 128], n_dns),
+    'header_length':  np.full(n_dns, 20),
+    'target_column':  np.zeros(n_dns, dtype=int),
+})
+
+# --- SSH keepalive / interactive ---
+n_ssh = N_NORMAL // 8
+ssh_lengths = np.random.choice([66, 90, 114, 130, 162, 184, 258], n_ssh)
+ssh_traffic = pd.DataFrame({
+    'packet_length':  ssh_lengths,
+    'protocol':       np.full(n_ssh, 6),
+    'src_port':       np.random.randint(1024, 65535, n_ssh),
+    'dst_port':       np.full(n_ssh, 22),
+    'tcp_flags':      np.random.choice([0x10, 0x18], n_ssh),
+    'icmp_type':      np.zeros(n_ssh, dtype=int),
+    'payload_length': np.clip(ssh_lengths - 40, 0, 1460),
+    'is_fragmented':  np.zeros(n_ssh, dtype=int),
+    'ttl':            np.random.choice([64, 128], n_ssh),
+    'header_length':  np.full(n_ssh, 20),
+    'target_column':  np.zeros(n_ssh, dtype=int),
+})
+
+# --- Remaining generic normal traffic ---
+n_rest = N_NORMAL - n_https - n_http - n_dns - n_ssh
+rest_lengths = np.random.randint(40, 1514, n_rest)
+rest_traffic = pd.DataFrame({
+    'packet_length':  rest_lengths,
+    'protocol':       np.random.choice([6, 17, 1], n_rest, p=[0.7, 0.25, 0.05]),
+    'src_port':       np.random.randint(1024, 65535, n_rest),
+    'dst_port':       np.random.choice([80, 443, 53, 22, 8080, 3306, 5432], n_rest),
+    'tcp_flags':      np.random.choice([0x02, 0x10, 0x18, 0x11, 0x00], n_rest),
+    'icmp_type':      np.zeros(n_rest, dtype=int),
+    'payload_length': np.clip(rest_lengths - 40, 0, 1460),
+    'is_fragmented':  np.random.choice([0, 1], n_rest, p=[0.99, 0.01]),
+    'ttl':            np.random.choice([64, 128, 255, 56, 60], n_rest),
+    'header_length':  np.full(n_rest, 20),
+    'target_column':  np.zeros(n_rest, dtype=int),
+})
+
+normal = pd.concat([https_traffic, http_traffic, dns_traffic, ssh_traffic, rest_traffic],
+                   ignore_index=True)
 
 # ---------------------------------------------------------------------------
 # 2. Generate anomalous / attack traffic
@@ -142,12 +230,16 @@ X_train, X_test, y_train, y_test = train_test_split(
 #    contamination = fraction of anomalies expected in data
 # ---------------------------------------------------------------------------
 contamination = float(np.sum(y == 1)) / len(y)
-print(f"Training IsolationForest  [contamination={contamination:.3f}] ...")
+# Cap contamination: even if attacks are ~14% of data, tell the model
+# to only flag the most extreme outliers to keep false positives low.
+contamination_capped = min(contamination, 0.08)
+print(f"Training IsolationForest  [true_contamination={contamination:.3f}, "
+      f"model_contamination={contamination_capped:.3f}] ...")
 
 model = IsolationForest(
-    n_estimators=200,
-    contamination=contamination,
-    max_samples='auto',
+    n_estimators=300,
+    contamination=contamination_capped,
+    max_samples=512,
     random_state=RANDOM_SEED,
     n_jobs=-1,
 )

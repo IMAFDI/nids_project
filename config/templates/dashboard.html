@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>NIDS Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+:root {
+  --bg:#0d1117; --surface:#161b22; --border:#30363d;
+  --text:#c9d1d9; --muted:#8b949e;
+  --low:#58a6ff; --medium:#d29922; --high:#f85149; --critical:#bc8cff;
+  --green:#3fb950; --accent:#1f6feb;
+}
+[data-theme=light] {
+  --bg:#f6f8fa; --surface:#ffffff; --border:#d0d7de;
+  --text:#24292f; --muted:#57606a;
+  --low:#0969da; --medium:#9a6700; --high:#cf222e; --critical:#8250df;
+  --green:#1a7f37;
+}
+* { box-sizing:border-box; margin:0; padding:0; }
+body { background:var(--bg); color:var(--text); font-family:'Segoe UI',system-ui,sans-serif; min-height:100vh; }
+header { background:var(--surface); border-bottom:1px solid var(--border); padding:12px 24px; display:flex; align-items:center; gap:12px; position:sticky; top:0; z-index:100; }
+header h1 { font-size:1.2rem; font-weight:700; }
+.live-badge { background:var(--green); color:#fff; font-size:0.65rem; padding:2px 8px; border-radius:12px; font-weight:700; }
+.live-badge.off { background:var(--high); }
+.header-right { margin-left:auto; display:flex; align-items:center; gap:12px; }
+.last-update { font-size:0.75rem; color:var(--muted); }
+.theme-btn { background:none; border:1px solid var(--border); color:var(--text); border-radius:6px; padding:4px 10px; cursor:pointer; font-size:0.8rem; }
+.theme-btn:hover { background:var(--border); }
+nav { background:var(--surface); border-bottom:1px solid var(--border); padding:0 24px; display:flex; gap:0; }
+.tab-btn { background:none; border:none; border-bottom:2px solid transparent; color:var(--muted); padding:12px 16px; cursor:pointer; font-size:0.85rem; font-weight:500; transition:all .2s; }
+.tab-btn:hover { color:var(--text); }
+.tab-btn.active { color:var(--accent); border-bottom-color:var(--accent); }
+.tab-content { display:none; padding:24px; max-width:1400px; margin:0 auto; }
+.tab-content.active { display:block; }
+.cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:12px; margin-bottom:20px; }
+.card { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:16px; }
+.card .lbl { font-size:0.7rem; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; }
+.card .val { font-size:1.8rem; font-weight:700; margin-top:4px; }
+.card.c-total .val { color:var(--text); }
+.card.c-1h .val { color:var(--accent); }
+.card.c-24h .val { color:var(--green); }
+.card.c-critical .val { color:var(--critical); }
+.card.c-high .val { color:var(--high); }
+.card.c-medium .val { color:var(--medium); }
+.card.c-low .val { color:var(--low); }
+.grid2 { display:grid; grid-template-columns:2fr 1fr; gap:16px; margin-bottom:16px; }
+.grid3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; margin-bottom:16px; }
+@media(max-width:900px){.grid2,.grid3{grid-template-columns:1fr;}}
+.panel { background:var(--surface); border:1px solid var(--border); border-radius:8px; overflow:hidden; margin-bottom:16px; }
+.ph { padding:12px 16px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; }
+.ph h2 { font-size:0.85rem; font-weight:600; }
+.pb { padding:16px; }
+.chart-wrap { position:relative; height:200px; }
+table { width:100%; border-collapse:collapse; font-size:0.8rem; }
+th { color:var(--muted); text-align:left; padding:8px 12px; border-bottom:1px solid var(--border); font-size:0.7rem; text-transform:uppercase; letter-spacing:.04em; }
+td { padding:8px 12px; border-bottom:1px solid var(--border); vertical-align:middle; }
+tr:last-child td { border-bottom:none; }
+tr:hover td { background:var(--bg); }
+.sev { display:inline-block; padding:2px 8px; border-radius:10px; font-size:0.68rem; font-weight:700; }
+.sev-LOW { background:#1f3d6e22; color:var(--low); border:1px solid var(--low); }
+.sev-MEDIUM { background:#9a670022; color:var(--medium); border:1px solid var(--medium); }
+.sev-HIGH { background:#cf222e22; color:var(--high); border:1px solid var(--high); }
+.sev-CRITICAL { background:#8250df22; color:var(--critical); border:1px solid var(--critical); }
+.btn { display:inline-flex; align-items:center; gap:4px; padding:5px 12px; border-radius:6px; border:1px solid var(--border); background:var(--surface); color:var(--text); font-size:0.78rem; cursor:pointer; }
+.btn:hover { background:var(--bg); }
+.btn-danger { border-color:var(--high); color:var(--high); }
+.btn-danger:hover { background:#cf222e22; }
+.btn-primary { border-color:var(--accent); background:var(--accent); color:#fff; }
+.btn-primary:hover { opacity:.9; }
+.btn-sm { padding:3px 8px; font-size:0.72rem; }
+input[type=text],select { background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:6px 10px; font-size:0.8rem; }
+input[type=text]:focus,select:focus { outline:none; border-color:var(--accent); }
+.search-bar { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; align-items:center; }
+.search-bar input[type=text] { flex:1; min-width:160px; }
+.pager { display:flex; gap:8px; justify-content:center; align-items:center; padding:12px; }
+.pager button { background:var(--surface); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:4px 12px; cursor:pointer; font-size:0.8rem; }
+.pager button:disabled { opacity:.4; cursor:default; }
+.page-info { font-size:0.78rem; color:var(--muted); }
+.source-row { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+.source-ip { font-family:monospace; font-size:0.78rem; min-width:120px; }
+.bar-bg { flex:1; background:var(--border); border-radius:4px; height:6px; overflow:hidden; }
+.bar-fill { height:6px; border-radius:4px; background:var(--high); transition:width .4s; }
+.source-cnt { font-size:0.72rem; color:var(--muted); min-width:30px; text-align:right; }
+.tag { display:inline-block; padding:1px 6px; border-radius:4px; font-size:0.68rem; background:var(--border); color:var(--muted); }
+.actions { display:flex; gap:4px; }
+tooltip { position:relative; }
+.mono { font-family:monospace; }
+.empty { text-align:center; color:var(--muted); padding:32px; font-size:0.85rem; }
+</style>
+</head>
+<body>
+<header>
+  <span style="font-size:1.5rem;">🛡️</span>
+  <h1>NIDS Dashboard</h1>
+  <span class="live-badge" id="live-badge">● LIVE</span>
+  <div class="header-right">
+    <span class="last-update" id="last-update">Connecting...</span>
+    <button class="theme-btn" onclick="toggleTheme()">🌙 Dark</button>
+  </div>
+</header>
+
+<nav>
+  <button class="tab-btn active" onclick="showTab('overview',this)">📊 Overview</button>
+  <button class="tab-btn" onclick="showTab('events',this)">📋 Events</button>
+  <button class="tab-btn" onclick="showTab('livefeed',this)">⚡ Live Feed</button>
+  <button class="tab-btn" onclick="showTab('devices',this)">🖥️ Devices</button>
+  <button class="tab-btn" onclick="showTab('whitelist',this)">🛡 Whitelist</button>
+  <button class="tab-btn" onclick="showTab('settings',this)">⚙️ Settings</button>
+</nav>
+
+<!-- ═══════════════ OVERVIEW TAB ═══════════════ -->
+<div id="tab-overview" class="tab-content active">
+  <div class="cards">
+    <div class="card c-total"><div class="lbl">Total Events</div><div class="val" id="s-total">—</div></div>
+    <div class="card c-1h"><div class="lbl">Last 1 Hour</div><div class="val" id="s-1h">—</div></div>
+    <div class="card c-24h"><div class="lbl">Last 24 Hours</div><div class="val" id="s-24h">—</div></div>
+    <div class="card c-critical"><div class="lbl">Critical</div><div class="val" id="s-critical">—</div></div>
+    <div class="card c-high"><div class="lbl">High</div><div class="val" id="s-high">—</div></div>
+    <div class="card c-medium"><div class="lbl">Medium</div><div class="val" id="s-medium">—</div></div>
+    <div class="card c-low"><div class="lbl">Low</div><div class="val" id="s-low">—</div></div>
+  </div>
+
+  <div class="grid2">
+    <div class="panel">
+      <div class="ph"><h2>📈 Events — Last 24 Hours</h2></div>
+      <div class="pb"><div class="chart-wrap"><canvas id="timelineChart"></canvas></div></div>
+    </div>
+    <div class="panel">
+      <div class="ph"><h2>🍩 Severity Breakdown</h2></div>
+      <div class="pb"><div class="chart-wrap"><canvas id="sevChart"></canvas></div></div>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="panel">
+      <div class="ph"><h2>🌐 Top Attacker IPs</h2></div>
+      <div class="pb" id="top-sources"><p class="empty">No data yet.</p></div>
+    </div>
+    <div class="panel">
+      <div class="ph"><h2>🎯 Top Attack Types</h2></div>
+      <div class="pb">
+        <table>
+          <thead><tr><th>Attack / Rule</th><th>Count</th></tr></thead>
+          <tbody id="top-rules-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ EVENTS TAB ═══════════════ -->
+<div id="tab-events" class="tab-content">
+  <div class="search-bar">
+    <input type="text" id="evt-search" placeholder="Search description, IP..." oninput="debounceSearch()" style="min-width:220px;"/>
+    <select id="evt-sev" onchange="loadEvents()">
+      <option value="">All Severities</option>
+      <option value="CRITICAL">Critical</option>
+      <option value="HIGH">High</option>
+      <option value="MEDIUM">Medium</option>
+      <option value="LOW">Low</option>
+    </select>
+    <select id="evt-type" onchange="loadEvents()">
+      <option value="">All Types</option>
+      <option value="signature">Signature</option>
+      <option value="anomaly">Anomaly</option>
+    </select>
+    <input type="text" id="evt-srcip" placeholder="Filter src IP..." oninput="debounceSearch()" style="width:140px;"/>
+    <button class="btn" onclick="loadEvents()">🔍 Search</button>
+    <a href="/api/events/export" class="btn">⬇ Export CSV</a>
+    <button class="btn btn-danger" onclick="clearAllEvents()">🗑 Clear All</button>
+  </div>
+  <div class="panel">
+    <table>
+      <thead><tr>
+        <th>ID</th><th>Time (UTC)</th><th>Severity</th><th>Type</th>
+        <th>Src IP</th><th>Dst IP</th><th>Proto</th><th>Description</th><th>Actions</th>
+      </tr></thead>
+      <tbody id="evt-tbody"></tbody>
+    </table>
+    <div class="pager">
+      <button onclick="evtPage(-1)" id="evt-prev">← Prev</button>
+      <span class="page-info" id="evt-page-info"></span>
+      <button onclick="evtPage(1)" id="evt-next">Next →</button>
+    </div>
+  </div>
+</div>
+
+<!-- DEVICES TAB -->
+<div id="tab-devices" class="tab-content">
+  <div class="cards" id="dev-stat-cards">
+    <div class="card c-total"><div class="lbl">Total Devices</div><div class="val" id="dev-total">—</div></div>
+    <div class="card c-1h"><div class="lbl">Active</div><div class="val" id="dev-active">—</div></div>
+    <div class="card c-high"><div class="lbl">Alerted</div><div class="val" id="dev-alerted">—</div></div>
+    <div class="card c-24h"><div class="lbl">Subnet</div><div class="val" style="font-size:1rem;padding-top:8px" id="dev-subnet">—</div></div>
+    <div class="card c-medium"><div class="lbl">Gateway</div><div class="val" style="font-size:1rem;padding-top:8px" id="dev-gateway">—</div></div>
+  </div>
+  <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;">
+    <input type="text" id="dev-search" placeholder="Filter by IP, hostname, vendor..." oninput="filterDevices()" style="flex:1;max-width:340px;"/>
+    <button class="btn" onclick="loadDevices()">🔄 Refresh</button>
+    <span class="page-info" id="dev-last-scan">Never scanned</span>
+  </div>
+  <div class="panel">
+    <table>
+      <thead><tr>
+        <th>IP Address</th><th>Hostname</th><th>MAC Address</th>
+        <th>Vendor</th><th>↑ Sent</th><th>↓ Recv</th>
+        <th>Packets</th><th>Protocols</th><th>Alerts</th>
+        <th>Last Seen</th><th>Actions</th>
+      </tr></thead>
+      <tbody id="dev-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- LIVE FEED TAB -->
+<div id="tab-livefeed" class="tab-content">
+  <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;">
+    <button class="btn" id="feed-pause-btn" onclick="toggleFeedPause()">⏸ Pause</button>
+    <button class="btn" onclick="clearFeed()">🗑 Clear Feed</button>
+    <span class="page-info" id="feed-count">0 events</span>
+  </div>
+  <div class="panel">
+    <div id="livefeed-list" style="max-height:600px;overflow-y:auto;"></div>
+  </div>
+</div>
+
+<!-- WHITELIST TAB -->
+<div id="tab-whitelist" class="tab-content">
+  <div class="panel">
+    <div class="ph"><h2>🛡 Trusted IP Whitelist</h2><span class="page-info" id="wl-count">0 IPs</span></div>
+    <div class="pb">
+      <div style="display:flex;gap:8px;margin-bottom:16px;">
+        <input type="text" id="wl-ip-input" placeholder="Enter IP address e.g. 192.168.1.1" style="flex:1;"/>
+        <button class="btn btn-primary" onclick="addWhitelistIP()">+ Add IP</button>
+      </div>
+      <table>
+        <thead><tr><th>IP Address</th><th>Actions</th></tr></thead>
+        <tbody id="wl-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- SETTINGS TAB -->
+<div id="tab-settings" class="tab-content">
+  <div class="grid2">
+    <div class="panel">
+      <div class="ph"><h2>⚙️ Dashboard Settings</h2></div>
+      <div class="pb">
+        <table>
+          <tr><td style="color:var(--muted);width:160px;">Auto-refresh interval</td><td>
+            <select id="refresh-interval" onchange="updateRefreshInterval()">
+              <option value="5000">5 seconds</option>
+              <option value="10000" selected>10 seconds</option>
+              <option value="30000">30 seconds</option>
+              <option value="60000">60 seconds</option>
+            </select>
+          </td></tr>
+          <tr><td style="color:var(--muted);">Theme</td><td>
+            <select onchange="setTheme(this.value)">
+              <option value="dark">Dark</option>
+              <option value="light">Light</option>
+            </select>
+          </td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="ph"><h2>📁 Data &amp; Exports</h2></div>
+      <div class="pb" style="display:flex;flex-direction:column;gap:10px;">
+        <a href="/api/events/export" class="btn">⬇ Download Events CSV</a>
+        <button class="btn btn-danger" onclick="clearAllEvents()">🗑 Clear All Events</button>
+      </div>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="ph"><h2>ℹ️ System Info</h2></div>
+    <div class="pb">
+      <table>
+        <tr><td style="color:var(--muted);width:200px;">Model Path</td><td class="mono">models/anomaly_model.joblib</td></tr>
+        <tr><td style="color:var(--muted);">Rules File</td><td class="mono">config/rules.json</td></tr>
+        <tr><td style="color:var(--muted);">Thresholds File</td><td class="mono">config/anomaly_thresholds.json</td></tr>
+        <tr><td style="color:var(--muted);">Whitelist File</td><td class="mono">config/whitelist.json</td></tr>
+        <tr><td style="color:var(--muted);">Database</td><td class="mono">logs/nids.db</td></tr>
+        <tr><td style="color:var(--muted);">Log File</td><td class="mono">logs/nids.log</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── State ──
+let _stats = {};
+let _evtOffset = 0;
+const EVT_LIMIT = 50;
+let _evtTotal = 0;
+let _refreshTimer = null;
+let _feedPaused = false;
+let _feedCount = 0;
+let _timelineChart = null;
+let _sevChart = null;
+let _searchTimer = null;
+
+// ── Theme ──
+function setTheme(t) {
+  document.documentElement.setAttribute('data-theme', t === 'light' ? 'light' : '');
+  document.querySelector('.theme-btn').textContent = t === 'light' ? '🌙 Dark' : '☀️ Light';
+  localStorage.setItem('nids-theme', t);
+}
+function toggleTheme() {
+  const cur = document.documentElement.getAttribute('data-theme');
+  setTheme(cur === 'light' ? 'dark' : 'light');
+}
+(function() { const t = localStorage.getItem('nids-theme'); if (t) setTheme(t); })();
+
+// ── Tabs ──
+function showTab(name, btn) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  btn.classList.add('active');
+  if (name === 'events') loadEvents();
+  if (name === 'whitelist') loadWhitelist();
+  if (name === 'devices') loadDevices();
+}
+
+// ── Stats ──
+async function loadStats() {
+  try {
+    const r = await fetch('/api/stats');
+    _stats = await r.json();
+    document.getElementById('s-total').textContent    = _stats.total ?? 0;
+    document.getElementById('s-1h').textContent       = _stats.recent_1h ?? 0;
+    document.getElementById('s-24h').textContent      = _stats.recent_24h ?? 0;
+    document.getElementById('s-critical').textContent = _stats.critical ?? 0;
+    document.getElementById('s-high').textContent     = _stats.high ?? 0;
+    document.getElementById('s-medium').textContent   = _stats.medium ?? 0;
+    document.getElementById('s-low').textContent      = _stats.low ?? 0;
+    document.getElementById('last-update').textContent = 'Updated ' + new Date().toLocaleTimeString();
+    renderTimeline(_stats.timeline || []);
+    renderSevChart(_stats);
+    renderTopSources(_stats.top_sources || []);
+    renderTopRules(_stats.top_rules || []);
+  } catch(e) { console.error('Stats error:', e); }
+}
+
+// ── Charts ──
+function chartDefaults() {
+  return {
+    color: getComputedStyle(document.documentElement).getPropertyValue('--muted').trim(),
+    grid: getComputedStyle(document.documentElement).getPropertyValue('--border').trim(),
+  };
+}
+
+function renderTimeline(data) {
+  const labels = data.map(d => d.hour.slice(11,16));
+  const values = data.map(d => d.count);
+  const d = chartDefaults();
+  if (!_timelineChart) {
+    const ctx = document.getElementById('timelineChart').getContext('2d');
+    _timelineChart = new Chart(ctx, {
+      type: 'bar',
+      data: { labels, datasets: [{ label: 'Events', data: values,
+        backgroundColor: 'rgba(248,81,73,0.5)', borderColor: '#f85149',
+        borderWidth: 1, borderRadius: 3 }] },
+      options: { responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ display:false } },
+        scales:{
+          x:{ ticks:{ color:d.color, maxTicksLimit:12 }, grid:{ color:d.grid } },
+          y:{ ticks:{ color:d.color }, grid:{ color:d.grid }, beginAtZero:true }
+        }
+      }
+    });
+  } else {
+    _timelineChart.data.labels = labels;
+    _timelineChart.data.datasets[0].data = values;
+    _timelineChart.update('none');
+  }
+}
+
+function renderSevChart(s) {
+  const vals = [s.critical||0, s.high||0, s.medium||0, s.low||0];
+  if (!_sevChart) {
+    const ctx = document.getElementById('sevChart').getContext('2d');
+    _sevChart = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: ['Critical','High','Medium','Low'],
+        datasets: [{ data: vals,
+          backgroundColor: ['#8250df','#f85149','#d29922','#58a6ff'],
+          borderWidth: 0 }]
+      },
+      options: { responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ position:'right', labels:{ color:'#8b949e', boxWidth:12, padding:10 } } }
+      }
+    });
+  } else {
+    _sevChart.data.datasets[0].data = vals;
+    _sevChart.update('none');
+  }
+}
+
+function renderTopSources(sources) {
+  const max = sources.length ? sources[0].count : 1;
+  const el = document.getElementById('top-sources');
+  if (!sources.length) { el.innerHTML = '<p class="empty">No data yet.</p>'; return; }
+  el.innerHTML = sources.map(s =>
+    `<div class="source-row">
+      <span class="source-ip mono">${s.src_ip}</span>
+      <div class="bar-bg"><div class="bar-fill" style="width:${Math.round(s.count/max*100)}%"></div></div>
+      <span class="source-cnt">${s.count}</span>
+      <button class="btn btn-sm" onclick="quickWhitelist('${s.src_ip}')">+WL</button>
+    </div>`
+  ).join('');
+}
+
+function renderTopRules(rules) {
+  const el = document.getElementById('top-rules-tbody');
+  if (!rules.length) { el.innerHTML = '<tr><td colspan="2" class="empty">No data yet.</td></tr>'; return; }
+  el.innerHTML = rules.map(r =>
+    `<tr><td>${r.description||'—'}</td><td><strong>${r.count}</strong></td></tr>`
+  ).join('');
+}
+
+// ── Events Tab ──
+async function loadEvents() {
+  const q      = document.getElementById('evt-search').value;
+  const sev    = document.getElementById('evt-sev').value;
+  const type   = document.getElementById('evt-type').value;
+  const srcip  = document.getElementById('evt-srcip').value;
+  const params = new URLSearchParams({ limit: EVT_LIMIT, offset: _evtOffset });
+  if (q)     params.set('q', q);
+  if (sev)   params.set('severity', sev);
+  if (type)  params.set('type', type);
+  if (srcip) params.set('src_ip', srcip);
+  try {
+    const r = await fetch('/api/events?' + params);
+    const d = await r.json();
+    _evtTotal = d.total || 0;
+    renderEventsTable(d.events || []);
+  } catch(e) { console.error('Events error:', e); }
+}
+
+function sevC(s) {
+  return {LOW:'var(--low)',MEDIUM:'var(--medium)',HIGH:'var(--high)',CRITICAL:'var(--critical)'}[s]||'var(--text)';
+}
+
+function renderEventsTable(events) {
+  const tbody = document.getElementById('evt-tbody');
+  if (!events.length) {
+    tbody.innerHTML = '<tr><td colspan="9" class="empty">No events found.</td></tr>';
+  } else {
+    tbody.innerHTML = events.map(e => `
+      <tr>
+        <td class="mono" style="color:var(--muted);font-size:.7rem">${e.id}</td>
+        <td class="mono" style="font-size:.72rem;white-space:nowrap">${(e.timestamp||'').replace('T',' ').slice(0,19)}</td>
+        <td><span class="sev sev-${e.severity}">${e.severity}</span></td>
+        <td><span class="tag">${e.event_type||''}</span></td>
+        <td class="mono">${e.src_ip||'—'}</td>
+        <td class="mono">${e.dst_ip||'—'}</td>
+        <td class="mono">${e.protocol||'—'}</td>
+        <td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(e.description||'').replace(/"/g,'&quot;')}">${e.description||''}</td>
+        <td><div class="actions">
+          <button class="btn btn-sm btn-danger" onclick="deleteEvent(${e.id})">🗑</button>
+          ${e.src_ip ? `<button class="btn btn-sm" onclick="quickWhitelist('${e.src_ip}')">+WL</button>` : ''}
+        </div></td>
+      </tr>`).join('');
+  }
+  const page = Math.floor(_evtOffset / EVT_LIMIT) + 1;
+  const totalPages = Math.ceil(_evtTotal / EVT_LIMIT) || 1;
+  document.getElementById('evt-page-info').textContent =
+    `Page ${page} of ${totalPages} (${_evtTotal} total)`;
+  document.getElementById('evt-prev').disabled = _evtOffset === 0;
+  document.getElementById('evt-next').disabled = (_evtOffset + EVT_LIMIT) >= _evtTotal;
+}
+
+function evtPage(dir) {
+  _evtOffset = Math.max(0, _evtOffset + dir * EVT_LIMIT);
+  loadEvents();
+}
+
+function debounceSearch() {
+  clearTimeout(_searchTimer);
+  _searchTimer = setTimeout(() => { _evtOffset = 0; loadEvents(); }, 400);
+}
+
+async function deleteEvent(id) {
+  if (!confirm('Delete this event?')) return;
+  await fetch('/api/events/' + id, { method: 'DELETE' });
+  loadEvents();
+  loadStats();
+}
+
+async function clearAllEvents() {
+  if (!confirm('Clear ALL intrusion events? This cannot be undone.')) return;
+  await fetch('/api/events/clear', { method: 'POST' });
+  loadEvents();
+  loadStats();
+}
+
+// ── Live Feed ──
+const _badge = document.getElementById('live-badge');
+
+function addFeedItem(ev) {
+  if (_feedPaused) return;
+  _feedCount++;
+  document.getElementById('feed-count').textContent = _feedCount + ' events';
+  const el = document.createElement('div');
+  el.style.cssText = 'padding:8px 16px;border-bottom:1px solid var(--border);font-size:0.78rem;animation:fadein .3s;';
+  el.innerHTML = `
+    <span style="color:var(--muted);font-family:monospace;margin-right:8px">${new Date().toLocaleTimeString()}</span>
+    <span class="sev sev-${ev.severity}">${ev.severity}</span>
+    <span class="tag" style="margin:0 6px">${ev.event_type||'event'}</span>
+    <span style="font-family:monospace;color:var(--low)">${ev.src_ip||''}</span>
+    ${ev.dst_ip ? `<span style="color:var(--muted)"> → </span><span style="font-family:monospace">${ev.dst_ip}</span>` : ''}
+    <span style="color:var(--muted);margin-left:8px">${(ev.description||ev.raw_message||'').slice(0,120)}</span>
+  `;
+  const list = document.getElementById('livefeed-list');
+  list.prepend(el);
+  if (list.children.length > 200) list.lastChild.remove();
+}
+
+function toggleFeedPause() {
+  _feedPaused = !_feedPaused;
+  document.getElementById('feed-pause-btn').textContent = _feedPaused ? '▶ Resume' : '⏸ Pause';
+}
+
+function clearFeed() {
+  document.getElementById('livefeed-list').innerHTML = '';
+  _feedCount = 0;
+  document.getElementById('feed-count').textContent = '0 events';
+}
+
+// ── SSE ──
+function connectSSE() {
+  const es = new EventSource('/stream');
+  es.onopen = () => { _badge.textContent = '● LIVE'; _badge.className = 'live-badge'; };
+  es.onerror = () => {
+    _badge.textContent = '● OFFLINE'; _badge.className = 'live-badge off';
+    setTimeout(connectSSE, 5000); es.close();
+  };
+  es.onmessage = (e) => {
+    const ev = JSON.parse(e.data);
+    if (ev.ping) return;
+    addFeedItem(ev);
+    loadStats();
+    if (document.getElementById('tab-events').classList.contains('active')) loadEvents();
+  };
+}
+
+// ── Whitelist ──
+async function loadWhitelist() {
+  try {
+    const r = await fetch('/api/whitelist');
+    const d = await r.json();
+    renderWhitelist(d.ips || []);
+  } catch(e) { console.error('Whitelist error:', e); }
+}
+
+function renderWhitelist(ips) {
+  document.getElementById('wl-count').textContent = ips.length + ' IPs';
+  const tbody = document.getElementById('wl-tbody');
+  if (!ips.length) {
+    tbody.innerHTML = '<tr><td colspan="2" class="empty">No IPs whitelisted yet.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = ips.map(ip =>
+    `<tr>
+      <td class="mono">${ip}</td>
+      <td><button class="btn btn-sm btn-danger" onclick="removeWhitelistIP('${ip}')">Remove</button></td>
+    </tr>`
+  ).join('');
+}
+
+async function addWhitelistIP() {
+  const ip = document.getElementById('wl-ip-input').value.trim();
+  if (!ip) return;
+  await fetch('/api/whitelist', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ip })
+  });
+  document.getElementById('wl-ip-input').value = '';
+  loadWhitelist();
+}
+
+async function removeWhitelistIP(ip) {
+  await fetch('/api/whitelist/' + ip, { method: 'DELETE' });
+  loadWhitelist();
+}
+
+async function quickWhitelist(ip) {
+  if (!confirm('Add ' + ip + ' to whitelist? Future alerts from this IP will be suppressed.')) return;
+  await fetch('/api/whitelist', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ip })
+  });
+  alert(ip + ' added to whitelist.');
+}
+
+// ── Devices Tab ──
+let _allDevices = [];
+
+function fmtBytes(n) {
+  if (n === undefined || n === null) return '0 B';
+  const units = ['B','KB','MB','GB'];
+  for (const u of units) {
+    if (n < 1024) return n.toFixed(1) + ' ' + u;
+    n /= 1024;
+  }
+  return n.toFixed(1) + ' TB';
+}
+
+async function loadDevices() {
+  try {
+    const r = await fetch('/api/devices');
+    const d = await r.json();
+    _allDevices = d.devices || [];
+    const s = d.stats || {};
+    document.getElementById('dev-total').textContent   = s.total_devices ?? 0;
+    document.getElementById('dev-active').textContent  = s.active_devices ?? 0;
+    document.getElementById('dev-alerted').textContent = s.alerted_devices ?? 0;
+    document.getElementById('dev-subnet').textContent  = s.subnet ?? '—';
+    document.getElementById('dev-gateway').textContent = s.gateway ?? '—';
+    document.getElementById('dev-last-scan').textContent = 'Updated ' + new Date().toLocaleTimeString();
+    filterDevices();
+  } catch(e) { console.error('Devices error:', e); }
+}
+
+function filterDevices() {
+  const q = (document.getElementById('dev-search').value || '').toLowerCase();
+  const filtered = q
+    ? _allDevices.filter(d =>
+        (d.ip||'').includes(q) ||
+        (d.hostname||'').toLowerCase().includes(q) ||
+        (d.vendor||'').toLowerCase().includes(q) ||
+        (d.mac||'').toLowerCase().includes(q))
+    : _allDevices;
+  renderDevices(filtered);
+}
+
+function renderDevices(devices) {
+  const tbody = document.getElementById('dev-tbody');
+  if (!devices.length) {
+    tbody.innerHTML = '<tr><td colspan="11" class="empty">No devices discovered yet. Start NIDS with --live to scan.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = devices.map(d => {
+    const alertStyle = d.alert_count > 0 ? 'color:var(--high);font-weight:700' : '';
+    const gwBadge = d.is_gateway ? '<span class="tag" style="background:#1f6feb33;color:var(--accent)">GW</span> ' : '';
+    const protos = (d.protocols||[]).join(', ') || '—';
+    const lastSeen = (d.last_seen||'').replace('T',' ').slice(0,19);
+    return `<tr>
+      <td class="mono" style="font-weight:600">${gwBadge}${d.ip}</td>
+      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${d.hostname||''}">${d.hostname||'—'}</td>
+      <td class="mono" style="font-size:.72rem">${d.mac||'N/A'}</td>
+      <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)" title="${d.vendor||''}">${d.vendor||'Unknown'}</td>
+      <td class="mono">${fmtBytes(d.bytes_sent)}</td>
+      <td class="mono">${fmtBytes(d.bytes_recv)}</td>
+      <td class="mono">${(d.pkts_sent||0)+(d.pkts_recv||0)}</td>
+      <td style="font-size:.72rem;color:var(--muted)">${protos}</td>
+      <td style="${alertStyle}">${d.alert_count||0}</td>
+      <td style="font-size:.72rem;color:var(--muted);white-space:nowrap">${lastSeen}</td>
+      <td><div class="actions">
+        <button class="btn btn-sm" onclick="showDeviceTraffic('${d.ip}')">📊</button>
+        <button class="btn btn-sm" onclick="quickWhitelist('${d.ip}')">+WL</button>
+      </div></td>
+    </tr>`;
+  }).join('');
+}
+
+async function showDeviceTraffic(ip) {
+  try {
+    const r = await fetch('/api/devices/' + ip);
+    const d = await r.json();
+    alert(
+      `Device: ${ip}\n` +
+      `Hostname: ${d.hostname||'—'}\n` +
+      `MAC: ${d.mac||'N/A'}\n` +
+      `Vendor: ${d.vendor||'Unknown'}\n` +
+      `Sent: ${fmtBytes(d.bytes_sent)} (${d.pkts_sent} pkts)\n` +
+      `Recv: ${fmtBytes(d.bytes_recv)} (${d.pkts_recv} pkts)\n` +
+      `Protocols: ${(d.protocols||[]).join(', ')||'none'}\n` +
+      `Alerts: ${d.alert_count||0}\n` +
+      `First seen: ${(d.first_seen||'').replace('T',' ').slice(0,19)}\n` +
+      `Last seen:  ${(d.last_seen||'').replace('T',' ').slice(0,19)}`
+    );
+  } catch(e) { alert('Could not load device details.'); }
+}
+
+// ── Auto-refresh ──
+function startRefresh(interval) {
+  clearInterval(_refreshTimer);
+  _refreshTimer = setInterval(loadStats, interval);
+}
+
+function updateRefreshInterval() {
+  const val = parseInt(document.getElementById('refresh-interval').value);
+  startRefresh(val);
+}
+
+// ── Init ──
+(function init() {
+  loadStats();
+  connectSSE();
+  startRefresh(10000);
+})();
+</script>
+
+<style>
+@keyframes fadein { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:none; } }
+</style>
+</body>
+</html>

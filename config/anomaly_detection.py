@@ -156,8 +156,15 @@ def perform_anomaly_detection(packets, model, thresholds=None):
             )
             anomalies.append(record)
 
-    logger.info(
-        f"Anomaly detection complete: {len(anomalies)} anomal{'y' if len(anomalies)==1 else 'ies'} "
-        f"found in {len(packets)} packets."
-    )
+    if len(packets) > 1:
+        # Only log summary for batch mode (not per-packet in live mode)
+        logger.info(
+            f"Anomaly detection complete: {len(anomalies)} anomal{'y' if len(anomalies)==1 else 'ies'} "
+            f"found in {len(packets)} packets."
+        )
+    else:
+        logger.debug(
+            f"Anomaly detection complete: {len(anomalies)} anomal{'y' if len(anomalies)==1 else 'ies'} "
+            f"found in 1 packet."
+        )
     return anomalies

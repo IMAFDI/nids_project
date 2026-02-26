@@ -179,6 +179,11 @@ def get_stats(db_path=None):
            WHERE timestamp >= datetime('now', '-24 hours')"""
     ).fetchone()[0]
 
+    stats['recent_1h'] = conn.execute(
+        """SELECT COUNT(*) FROM intrusion_events
+           WHERE timestamp >= datetime('now', '-1 hour')"""
+    ).fetchone()[0]
+
     stats['timeline'] = [
         {'hour': row[0], 'count': row[1]}
         for row in conn.execute(
@@ -190,4 +195,87 @@ def get_stats(db_path=None):
         ).fetchall()
     ]
 
+    stats['top_rules'] = [
+        {'description': row[0], 'count': row[1]}
+        for row in conn.execute(
+            """SELECT description, COUNT(*) as cnt FROM intrusion_events
+               WHERE description IS NOT NULL
+               GROUP BY description ORDER BY cnt DESC LIMIT 5"""
+        ).fetchall()
+    ]
+
+    stats['severity_timeline'] = [
+        {'hour': row[0], 'severity': row[1], 'count': row[2]}
+        for row in conn.execute(
+            """SELECT strftime('%Y-%m-%dT%H:00:00', timestamp) as hour,
+                      severity, COUNT(*) as cnt
+               FROM intrusion_events
+               WHERE timestamp >= datetime('now', '-24 hours')
+               GROUP BY hour, severity ORDER BY hour"""
+        ).fetchall()
+    ]
+
     return stats
+
+
+def search_events(query=None, severity=None, event_type=None,
+                  src_ip=None, limit=200, offset=0, db_path=None):
+    """Search intrusion events with filters."""
+    conn = get_connection(db_path)
+    conditions = []
+    params = []
+
+    if query:
+        conditions.append(
+            "(description LIKE ? OR src_ip LIKE ? OR dst_ip LIKE ?)"
+        )
+        q = f"%{query}%"
+        params.extend([q, q, q])
+    if severity:
+        conditions.append("severity = ?")
+        params.append(severity)
+    if event_type:
+        conditions.append("event_type = ?")
+        params.append(event_type)
+    if src_ip:
+        conditions.append("src_ip = ?")
+        params.append(src_ip)
+
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+    rows = conn.execute(
+        f"SELECT * FROM intrusion_events {where} ORDER BY timestamp DESC LIMIT ? OFFSET ?",
+        params + [limit, offset]
+    ).fetchall()
+    total = conn.execute(
+        f"SELECT COUNT(*) FROM intrusion_events {where}", params
+    ).fetchone()[0]
+    return [dict(r) for r in rows], total
+
+
+def delete_event(event_id, db_path=None):
+    """Delete a single intrusion event by ID."""
+    conn = get_connection(db_path)
+    conn.execute("DELETE FROM intrusion_events WHERE id = ?", (event_id,))
+    conn.commit()
+
+
+def clear_events(db_path=None):
+    """Clear all intrusion events (use with caution)."""
+    conn = get_connection(db_path)
+    conn.execute("DELETE FROM intrusion_events")
+    conn.commit()
+
+
+def export_events_csv(db_path=None):
+    """Return all events as a CSV string."""
+    import csv, io
+    conn = get_connection(db_path)
+    rows = conn.execute(
+        "SELECT * FROM intrusion_events ORDER BY timestamp DESC"
+    ).fetchall()
+    output = io.StringIO()
+    if rows:
+        writer = csv.DictWriter(output, fieldnames=rows[0].keys())
+        writer.writeheader()
+        writer.writerows([dict(r) for r in rows])
+    return output.getvalue()
