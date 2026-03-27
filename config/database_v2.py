@@ -105,7 +105,7 @@ class AlertRule(Base):
 
     # JSON fields for flexible rule definitions
     criteria = Column(JSON, nullable=False)  # rule-specific criteria (protocol, ports, regex, etc.)
-    metadata = Column(JSON, nullable=True)   # additional metadata
+    rule_metadata = Column(JSON, nullable=True)   # additional metadata
 
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
@@ -162,7 +162,8 @@ _is_sqlite = False
 def _create_engine(url: str, echo: bool = False) -> Engine:
     global _is_sqlite
     parsed = make_url(url)
-    if parsed.driver == "sqlite":
+    # SQLAlchemy 2.0 uses drivername instead of driver
+    if parsed.drivername.startswith("sqlite"):
         _is_sqlite = True
         engine = create_engine(
             url,
