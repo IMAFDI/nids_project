@@ -1,10 +1,9 @@
-import { useEffect, useState } from 'react';
 import { Brain, TrendingUp, Activity } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 export default function MLMonitor() {
-  const [modelVersion, setModelVersion] = useState('v2024.03.27');
-  const [lastRetrain, setLastRetrain] = useState('2024-03-27 10:30:00');
+  const modelVersion = 'v2024.03.27';
+  const lastRetrain = '2024-03-27 10:30:00';
 
   const featureImportance = [
     { name: 'packet_length', importance: 0.18 },

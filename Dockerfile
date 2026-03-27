@@ -3,7 +3,7 @@ FROM python:3.11-slim AS builder
 
 WORKDIR /build
 COPY config/requirements.txt .
-RUN pip install --no-cache-dir --user -r config/requirements.txt
+RUN pip install --no-cache-dir --user -r requirements.txt
 
 FROM python:3.11-slim
 
@@ -25,11 +25,9 @@ COPY --from=builder /root/.local /home/nids/.local
 # Copy application code
 COPY --chown=nids:nids config/ ./config/
 COPY --chown=nids:nids models/ ./models/
-COPY --chown=nids:nids logs/ ./logs/ 2>/dev/null || mkdir -p logs
+# Create logs directory (don't copy local logs - they should be fresh in container)
+RUN mkdir -p ./logs && chown nids:nids ./logs
 COPY --chown=nids:nids api/ ./api/
-
-# Install Python dependencies
-RUN pip install --no-cache-dir --user -r config/requirements.txt
 
 ENV PATH=/home/nids/.local/bin:$PATH
 ENV PYTHONUNBUFFERED=1

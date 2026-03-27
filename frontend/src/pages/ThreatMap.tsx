@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ComposableMap, Geographies, Geography, Marker } from 'react-simple-maps';
+import { ComposableMap, Geographies, Geography } from 'react-simple-maps';
 import { fetchEvents } from '../lib/api';
 import { Event } from '../types';
 import clsx from 'clsx';
@@ -89,9 +89,9 @@ export default function ThreatMap() {
       <div className="bg-white rounded-lg shadow p-6">
         <ComposableMap projectionConfig={{ scale: 147 }}>
           <Geographies geography={geoUrl}>
-            {({ geographies }) =>
-              geographies.map((geo) => {
-                const countryCode = geo.properties.iso_a2;
+            {({ geographies }: { geographies: any[] }) =>
+              geographies.map((geo: any) => {
+                const countryCode = geo.properties.iso_a2 as string;
                 const stats = countryStats[countryCode];
                 
                 return (

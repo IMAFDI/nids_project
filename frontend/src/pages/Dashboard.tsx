@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Activity, AlertTriangle, TrendingUp, Server } from 'lucide-react';
 import { fetchStats, fetchSystemMetrics } from '../lib/api';
 import { Stats, SystemMetrics } from '../types';
-import { PieChart, Pie, Cell, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import clsx from 'clsx';
 
 const SEVERITY_COLORS = {
