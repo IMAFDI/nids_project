@@ -56,7 +56,7 @@ class IntrusionEvent(Base):
     src_port = Column(Integer, nullable=True)
     dst_port = Column(Integer, nullable=True)
     description = Column(Text, nullable=True)
-    rule_id = Column(Integer, nullable=True)
+    rule_id = Column(Integer, ForeignKey("alert_rules.id"), nullable=True)
     packet_length = Column(Integer, nullable=True)
     tcp_flags = Column(Integer, nullable=True)
     ttl = Column(Integer, nullable=True)
@@ -65,7 +65,7 @@ class IntrusionEvent(Base):
     raw_message = Column(Text, nullable=True)
     ml_score = Column(String(10), nullable=True)  # e.g. "0.85"
     threat_intel_score = Column(Integer, nullable=True)
-    acknowledged = Column(Boolean, default=False)
+    acknowledged = Column(Boolean, default=False, nullable=False, server_default="false")
     acknowledged_by = Column(String(100), nullable=True)
     acknowledged_at = Column(DateTime(timezone=True), nullable=True)
     country_code = Column(String(2), nullable=True)
