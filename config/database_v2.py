@@ -21,7 +21,7 @@ import hmac
 import secrets
 import json
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Generator, Any
 
 from sqlalchemy import (
@@ -183,6 +183,24 @@ class UserAccount(Base):
     __table_args__ = (
         Index("idx_user_accounts_username", "username"),
         Index("idx_user_accounts_email", "email"),
+    )
+
+
+class PasswordResetToken(Base):
+    __tablename__ = "password_reset_tokens"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("user_accounts.id", ondelete="CASCADE"), nullable=False)
+    token_hash = Column(String(64), nullable=False, unique=True)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    consumed_at = Column(DateTime(timezone=True), nullable=True)
+    requested_ip = Column(String(45), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        Index("idx_password_reset_user_id", "user_id"),
+        Index("idx_password_reset_expires_at", "expires_at"),
+        Index("idx_password_reset_consumed_at", "consumed_at"),
     )
 
 
@@ -603,6 +621,10 @@ def verify_password(password: str, stored_hash: str) -> bool:
         return False
 
 
+def _hash_reset_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
 def _ensure_default_user() -> None:
     """Ensure a default admin user exists for first login."""
     username = os.environ.get("NIDS_API_USER", "admin").strip() or "admin"
@@ -669,6 +691,15 @@ def get_user_by_id(user_id: int) -> dict[str, Any] | None:
         return _row_to_dict(user) if user else None
 
 
+def get_user_by_email(email: str) -> dict[str, Any] | None:
+    normalized = (email or "").strip().lower()
+    if not normalized:
+        return None
+    with get_session() as session:
+        user = session.query(UserAccount).filter(UserAccount.email == normalized).first()
+        return _row_to_dict(user) if user else None
+
+
 def update_user_profile(user_id: int, full_name: str | None = None, email: str | None = None) -> dict[str, Any] | None:
     with get_session() as session:
         user = session.query(UserAccount).filter(UserAccount.id == user_id).first()
@@ -702,6 +733,58 @@ def touch_user_last_login(user_id: int) -> None:
         user = session.query(UserAccount).filter(UserAccount.id == user_id).first()
         if user:
             user.last_login = datetime.now(timezone.utc)
+
+
+def create_password_reset_token(
+    user_id: int,
+    expires_in_minutes: int = 30,
+    requested_ip: str | None = None,
+) -> str:
+    token = secrets.token_urlsafe(32)
+    token_hash = _hash_reset_token(token)
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=max(1, expires_in_minutes))
+    now = datetime.now(timezone.utc)
+    with get_session() as session:
+        session.query(PasswordResetToken).filter(
+            PasswordResetToken.user_id == user_id,
+            PasswordResetToken.consumed_at.is_(None),
+        ).update({"consumed_at": now}, synchronize_session=False)
+        row = PasswordResetToken(
+            user_id=user_id,
+            token_hash=token_hash,
+            expires_at=expires_at,
+            requested_ip=requested_ip,
+            created_at=now,
+        )
+        session.add(row)
+    return token
+
+
+def consume_password_reset_token(email: str, token: str, new_password: str) -> bool:
+    normalized = (email or "").strip().lower()
+    token_hash = _hash_reset_token(token or "")
+    now = datetime.now(timezone.utc)
+    with get_session() as session:
+        user = session.query(UserAccount).filter(UserAccount.email == normalized).first()
+        if not user or not user.is_active:
+            return False
+        row = session.query(PasswordResetToken).filter(
+            PasswordResetToken.user_id == user.id,
+            PasswordResetToken.token_hash == token_hash,
+            PasswordResetToken.consumed_at.is_(None),
+            PasswordResetToken.expires_at > now,
+        ).first()
+        if not row:
+            return False
+        user.password_hash = _hash_password(new_password)
+        user.updated_at = now
+        row.consumed_at = now
+        session.query(PasswordResetToken).filter(
+            PasswordResetToken.user_id == user.id,
+            PasswordResetToken.consumed_at.is_(None),
+            PasswordResetToken.id != row.id,
+        ).update({"consumed_at": now}, synchronize_session=False)
+        return True
 
 def log_intrusion_event(
     event_type: str,
@@ -1803,5 +1886,4 @@ def _select_retention_policy_for_event(event: IntrusionEvent, policies: list[Ret
 
 
 # Import these at the bottom to avoid circular imports
-from datetime import timedelta
 from sqlalchemy import func

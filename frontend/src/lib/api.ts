@@ -51,6 +51,20 @@ export const register = async (payload: {
   return response.data;
 };
 
+export const requestPasswordReset = async (email: string) => {
+  const response = await api.post('/auth/forgot-password', { email });
+  return response.data;
+};
+
+export const confirmPasswordReset = async (payload: {
+  email: string;
+  token: string;
+  new_password: string;
+}) => {
+  const response = await api.post('/auth/reset-password', payload);
+  return response.data;
+};
+
 export const logout = () => {
   setAuthToken(null);
 };

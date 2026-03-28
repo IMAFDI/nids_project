@@ -12,11 +12,13 @@ import csv
 import io
 import logging
 import os
+import smtplib
 import time
 import uuid
 from collections import deque
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
+from email.message import EmailMessage
 from typing import Any
 
 import psutil
@@ -49,9 +51,12 @@ from config.database_v2 import (
     get_threat_intel,
     get_user_by_identifier,
     get_user_by_id,
+    get_user_by_email,
     create_user,
     update_user_profile,
     update_user_password,
+    create_password_reset_token,
+    consume_password_reset_token,
     verify_password,
     touch_user_last_login,
     create_case,
@@ -211,6 +216,32 @@ def audit_action(
     )
 
 
+def _send_password_reset_email(email: str, token: str) -> None:
+    settings = get_settings()
+    email_cfg = settings.notifications.email
+    if not email_cfg.enabled:
+        logger.warning("Password reset email disabled; request for %s accepted but not sent", email)
+        return
+    if not (email_cfg.host and email_cfg.port and email_cfg.user and email_cfg.password and email_cfg.from_addr):
+        logger.error("Password reset email config incomplete; cannot send reset email to %s", email)
+        return
+
+    msg = EmailMessage()
+    msg["Subject"] = "NIDS Password Reset"
+    msg["From"] = email_cfg.from_addr
+    msg["To"] = email
+    msg.set_content(
+        "A password reset was requested for your NIDS account.\n\n"
+        f"Reset token: {token}\n"
+        "This token expires in 30 minutes.\n"
+        "If you did not request this, you can ignore this email."
+    )
+    with smtplib.SMTP(email_cfg.host, email_cfg.port, timeout=10) as server:
+        server.starttls()
+        server.login(email_cfg.user, email_cfg.password)
+        server.send_message(msg)
+
+
 def get_tenant_id(request: Request) -> str | None:
     tenant = request.headers.get("X-Tenant-ID")
     if tenant is None:
@@ -280,6 +311,16 @@ class UpdateProfileRequest(BaseModel):
 
 class ChangePasswordRequest(BaseModel):
     current_password: str
+    new_password: str = Field(min_length=8)
+
+
+class PasswordResetRequest(BaseModel):
+    email: str
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    email: str
+    token: str = Field(min_length=16)
     new_password: str = Field(min_length=8)
 
 
@@ -1087,6 +1128,73 @@ async def change_password(
         resource_id=int(current_user["id"]),
         details={"password_changed": True},
         current_user=current_user,
+    )
+    return {"ok": True}
+
+
+@app.post("/api/v1/auth/forgot-password", tags=["auth"])
+async def forgot_password(req: PasswordResetRequest, request: Request) -> dict:
+    """Request a password reset token (sent to the user's email)."""
+    email = req.email.strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="Email is required")
+
+    user = get_user_by_email(email)
+    if user and user.get("is_active", True):
+        token = create_password_reset_token(
+            user_id=int(user["id"]),
+            expires_in_minutes=30,
+            requested_ip=_request_ip(request),
+        )
+        _send_password_reset_email(email, token)
+        audit_action(
+            request=request,
+            action="PASSWORD_RESET_REQUESTED",
+            resource_type="user_account",
+            resource_id=int(user["id"]),
+            details={"email": email},
+            current_user=user,
+            fallback_user="anonymous",
+        )
+    else:
+        audit_action(
+            request=request,
+            action="PASSWORD_RESET_REQUESTED_UNKNOWN",
+            resource_type="user_account",
+            resource_id=None,
+            details={"email": email},
+            current_user=None,
+            fallback_user="anonymous",
+        )
+    return {"ok": True, "message": "If the account exists, a reset email has been sent"}
+
+
+@app.post("/api/v1/auth/reset-password", tags=["auth"])
+async def reset_password(req: PasswordResetConfirmRequest, request: Request) -> dict:
+    """Reset password using email + reset token."""
+    email = req.email.strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="Email is required")
+    if len(req.new_password) < 8:
+        raise HTTPException(status_code=400, detail="New password must be at least 8 characters")
+
+    updated = consume_password_reset_token(
+        email=email,
+        token=req.token.strip(),
+        new_password=req.new_password,
+    )
+    if not updated:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+
+    user = get_user_by_email(email)
+    audit_action(
+        request=request,
+        action="PASSWORD_RESET_COMPLETED",
+        resource_type="user_account",
+        resource_id=int(user["id"]) if user else None,
+        details={"email": email},
+        current_user=user,
+        fallback_user="anonymous",
     )
     return {"ok": True}
 

@@ -188,6 +188,16 @@ curl -X POST http://localhost:8000/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{"username":"alice","email":"alice@example.com","password":"strongpass123"}'
 
+# Request password reset token
+curl -X POST http://localhost:8000/api/v1/auth/forgot-password \
+  -H "Content-Type: application/json" \
+  -d '{"email":"alice@example.com"}'
+
+# Reset password using token from email
+curl -X POST http://localhost:8000/api/v1/auth/reset-password \
+  -H "Content-Type: application/json" \
+  -d '{"email":"alice@example.com","token":"<token-from-email>","new_password":"newStrongPass123"}'
+
 # Use token
 TOKEN="your-jwt-token"
 curl http://localhost:8000/api/v1/events \
@@ -209,6 +219,8 @@ Unauthorized role access returns **403 Forbidden** with a clear permission messa
 |--------|------|-------------|
 | POST | `/api/v1/auth/login` | Login and receive JWT |
 | POST | `/api/v1/auth/register` | Create user account (admin only) |
+| POST | `/api/v1/auth/forgot-password` | Request password reset token (email delivery) |
+| POST | `/api/v1/auth/reset-password` | Reset password using email + token |
 | GET | `/api/v1/auth/me` | Current user profile |
 | PUT | `/api/v1/auth/me` | Update user profile |
 | POST | `/api/v1/auth/change-password` | Change current user password |
