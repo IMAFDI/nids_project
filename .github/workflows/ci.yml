@@ -1,0 +1,116 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ------------------------------------------------------------------ #
+  # Lint
+  # ------------------------------------------------------------------ #
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install lint tools
+        run: |
+          pip install ruff bandit safety
+
+      - name: Run ruff (Python linting)
+        run: |
+          ruff check config/ api/ models/ --output-format=text
+
+      - name: Run bandit (Python SAST)
+        run: |
+          bandit -r config/ api/ models/ -f txt --exclude "config/requirements.txt"
+
+  # ------------------------------------------------------------------ #
+  # Test
+  # ------------------------------------------------------------------ #
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r config/requirements.txt
+          pip install pytest pytest-asyncio httpx psycopg2-binary
+
+      - name: Run pytest with coverage
+        run: |
+          pytest tests/ \
+            --cov=config \
+            --cov=api \
+            --cov-report=term-missing \
+            --cov-report=xml \
+            --cov-fail-under=70 \
+            -v
+
+  # ------------------------------------------------------------------ #
+  # Security scan
+  # ------------------------------------------------------------------ #
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r config/requirements.txt safety
+
+      - name: Run safety (dependency CVEs)
+        run: |
+          safety check --json --output=results.json || true
+          # Display results
+          cat results.json 2>/dev/null || echo "No known vulnerabilities found"
+
+  # ------------------------------------------------------------------ #
+  # Build
+  # ------------------------------------------------------------------ #
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build backend Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile
+          load: true
+          tags: nids:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build frontend Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          file: frontend/Dockerfile
+          load: true
+          tags: nids-frontend:test

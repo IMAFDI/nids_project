@@ -1,0 +1,130 @@
+services:
+  # ------------------------------------------------------------------ #
+  # RabbitMQ
+  # ------------------------------------------------------------------ #
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    restart: unless-stopped
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ------------------------------------------------------------------ #
+  # PostgreSQL
+  # ------------------------------------------------------------------ #
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: nids
+      POSTGRES_USER: nids
+      POSTGRES_PASSWORD: ${NIDS_DB_PASSWORD:-changeme}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nids -d nids"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ------------------------------------------------------------------ #
+  # Redis
+  # ------------------------------------------------------------------ #
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ------------------------------------------------------------------ #
+  # NIDS Backend
+  # ------------------------------------------------------------------ #
+  nids:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      NIDS_DB_URL: postgresql://nids:${NIDS_DB_PASSWORD:-changeme}@postgres:5432/nids
+      NIDS_DB_ECHO: "false"
+      NIDS_CAPTURE_INTERFACE: ${NIDS_CAPTURE_INTERFACE:-}
+      NIDS_JWT_SECRET: ${NIDS_JWT_SECRET:-super-secret-dev-key-change-me}
+      NIDS_EMAIL_ENABLED: ${NIDS_EMAIL_ENABLED:-false}
+      NIDS_EMAIL_HOST: ${NIDS_EMAIL_HOST:-smtp.gmail.com}
+      NIDS_EMAIL_PORT: ${NIDS_EMAIL_PORT:-587}
+      NIDS_EMAIL_USER: ${NIDS_EMAIL_USER:-}
+      NIDS_EMAIL_PASSWORD: ${NIDS_EMAIL_PASSWORD:-}
+      NIDS_EMAIL_FROM: ${NIDS_EMAIL_FROM:-}
+      NIDS_EMAIL_TO: ${NIDS_EMAIL_TO:-}
+      NIDS_SLACK_ENABLED: ${NIDS_SLACK_ENABLED:-false}
+      NIDS_SLACK_WEBHOOK_URL: ${NIDS_SLACK_WEBHOOK:-}
+      NIDS_PAGERDUTY_ENABLED: ${NIDS_PAGERDUTY_ENABLED:-false}
+      NIDS_PAGERDUTY_ROUTING_KEY: ${NIDS_PAGERDUTY_ROUTING_KEY:-}
+      NIDS_TEAMS_ENABLED: ${NIDS_TEAMS_ENABLED:-false}
+      NIDS_TEAMS_WEBHOOK_URL: ${NIDS_TEAMS_WEBHOOK:-}
+      NIDS_SYSLOG_ENABLED: ${NIDS_SYSLOG_ENABLED:-false}
+      NIDS_SYSLOG_HOST: ${NIDS_SYSLOG_HOST:-syslog}
+      NIDS_SYSLOG_PORT: ${NIDS_SYSLOG_PORT:-514}
+      NIDS_THREATINTEL_ABUSEIPDB_API_KEY: ${NIDS_THREATINTEL_ABUSEIPDB_API_KEY:-}
+      NIDS_BROKER_ENABLED: ${NIDS_BROKER_ENABLED:-true}
+      NIDS_BROKER_BACKEND: ${NIDS_BROKER_BACKEND:-rabbitmq}
+      NIDS_BROKER_RABBITMQ_URL: ${NIDS_BROKER_RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
+      NIDS_BROKER_EXCHANGE: ${NIDS_BROKER_EXCHANGE:-nids.events}
+      NIDS_BROKER_QUEUE: ${NIDS_BROKER_QUEUE:-nids.events.queue}
+      NIDS_BROKER_ROUTING_KEY: ${NIDS_BROKER_ROUTING_KEY:-nids.event.detected}
+      NIDS_BROKER_PREFETCH_COUNT: ${NIDS_BROKER_PREFETCH_COUNT:-100}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./logs:/home/nids/logs
+      - ./config/blocklists:/home/nids/config/blocklists
+      - ./config/GeoLite2-Country.mmdb:/home/nids/config/GeoLite2-Country.mmdb:ro
+    cap_add:
+      - NET_ADMIN
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ------------------------------------------------------------------ #
+  # React Frontend
+  # ------------------------------------------------------------------ #
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - nids
+    ports:
+      - "3000:80"
+    environment:
+      - VITE_API_BASE_URL=http://localhost:8000
+
+volumes:
+  postgres_data:
+  redis_data:
