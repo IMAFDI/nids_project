@@ -23,6 +23,7 @@ psycopg2-binary>=2.9.9
 
 # --- Async & Queue ---
 redis>=5.0.0
+pika>=1.3.2
 
 # --- Notifications ---
 aiosmtplib>=3.0.0

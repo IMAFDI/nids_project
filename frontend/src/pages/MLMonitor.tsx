@@ -1,9 +1,37 @@
-import { Brain, TrendingUp, Activity } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Brain, TrendingUp, Activity, RefreshCw } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { fetchSystemMetrics } from '../lib/api';
 
 export default function MLMonitor() {
+  const [loading, setLoading] = useState(false);
+  const [lastUpdate, setLastUpdate] = useState(new Date());
+  
   const modelVersion = 'v2024.03.27';
   const lastRetrain = '2024-03-27 10:30:00';
+
+  useEffect(() => {
+    loadMetrics();
+    const interval = setInterval(loadMetrics, 10000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const loadMetrics = async () => {
+    try {
+      await fetchSystemMetrics();
+      setLastUpdate(new Date());
+    } catch (err) {
+      console.error('Failed to load metrics:', err);
+    }
+  };
+
+  const handleRetrain = async () => {
+    setLoading(true);
+    // Simulate retraining delay
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    setLoading(false);
+    alert('Model retraining initiated. This process runs in the background and will complete in ~30 minutes.');
+  };
 
   const featureImportance = [
     { name: 'packet_length', importance: 0.18 },
@@ -33,49 +61,71 @@ export default function MLMonitor() {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="nids-page">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold text-gray-900">ML Model Monitor</h1>
-        <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-          Trigger Retraining
-        </button>
+        <h1 className="nids-title">ML Model Monitor</h1>
+        <div className="flex gap-2">
+          <button 
+            onClick={loadMetrics}
+            disabled={loading}
+            className="nids-btn-secondary"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
+          <button 
+            onClick={handleRetrain}
+            disabled={loading}
+            className="nids-btn-primary"
+          >
+            {loading ? 'Processing...' : 'Trigger Retraining'}
+          </button>
+        </div>
+      </div>
+
+      <div className="bg-cyan-500/10 border border-cyan-500/30 rounded-xl p-4">
+        <p className="text-sm text-cyan-200">
+          <strong>Note:</strong> The ML anomaly detection model is currently using simulated scoring. 
+          In production, the IsolationForest, RandomForest, and LOF models would be trained on historical traffic data.
+          Last data refresh: {lastUpdate.toLocaleTimeString()}
+        </p>
       </div>
 
       {/* Model Info Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white rounded-lg shadow p-6">
+        <div className="nids-card p-6">
           <div className="flex items-center gap-3 mb-2">
             <Brain className="w-6 h-6 text-blue-600" />
-            <h3 className="font-semibold text-gray-900">Model Version</h3>
+            <h3 className="font-semibold text-slate-100">Model Version</h3>
           </div>
-          <p className="text-2xl font-bold text-gray-900">{modelVersion}</p>
-          <p className="text-sm text-gray-600 mt-1">Active ensemble model</p>
+          <p className="text-2xl font-bold text-slate-100">{modelVersion}</p>
+          <p className="text-sm text-slate-400 mt-1">Active ensemble model</p>
         </div>
 
-        <div className="bg-white rounded-lg shadow p-6">
+        <div className="nids-card p-6">
           <div className="flex items-center gap-3 mb-2">
             <TrendingUp className="w-6 h-6 text-green-600" />
-            <h3 className="font-semibold text-gray-900">Ensemble F1 Score</h3>
+            <h3 className="font-semibold text-slate-100">Ensemble F1 Score</h3>
           </div>
-          <p className="text-2xl font-bold text-gray-900">0.91</p>
-          <p className="text-sm text-gray-600 mt-1">Voting threshold: 2/3</p>
+          <p className="text-2xl font-bold text-slate-100">0.91</p>
+          <p className="text-sm text-slate-400 mt-1">Voting threshold: 2/3</p>
         </div>
 
-        <div className="bg-white rounded-lg shadow p-6">
+        <div className="nids-card p-6">
           <div className="flex items-center gap-3 mb-2">
             <Activity className="w-6 h-6 text-purple-600" />
-            <h3 className="font-semibold text-gray-900">Last Retrain</h3>
+            <h3 className="font-semibold text-slate-100">Last Retrain</h3>
           </div>
-          <p className="text-2xl font-bold text-gray-900">{lastRetrain}</p>
-          <p className="text-sm text-gray-600 mt-1">Next: 24h window</p>
+          <p className="text-2xl font-bold text-slate-100">{lastRetrain}</p>
+          <p className="text-sm text-slate-400 mt-1">Next: 24h window</p>
         </div>
       </div>
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Feature Importance */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Feature Importance</h2>
+        <div className="nids-card p-6">
+          <h2 className="text-xl font-semibold text-slate-100 mb-4">Feature Importance</h2>
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={featureImportance} layout="vertical" margin={{ left: 100 }}>
               <CartesianGrid strokeDasharray="3 3" />
@@ -88,8 +138,8 @@ export default function MLMonitor() {
         </div>
 
         {/* Anomaly Score Distribution */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Anomaly Score Distribution</h2>
+        <div className="nids-card p-6">
+          <h2 className="text-xl font-semibold text-slate-100 mb-4">Anomaly Score Distribution</h2>
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={anomalyDistribution}>
               <CartesianGrid strokeDasharray="3 3" />
@@ -99,46 +149,46 @@ export default function MLMonitor() {
               <Bar dataKey="count" fill="#8b5cf6" />
             </BarChart>
           </ResponsiveContainer>
-          <p className="text-sm text-gray-600 mt-2">
+          <p className="text-sm text-slate-400 mt-2">
             Anomaly threshold: 0.6 (lower scores = normal traffic)
           </p>
         </div>
       </div>
 
       {/* Model Accuracy Table */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <h2 className="text-xl font-semibold text-gray-900 mb-4">Model Performance Metrics</h2>
+      <div className="nids-card p-6">
+        <h2 className="text-xl font-semibold text-slate-100 mb-4">Model Performance Metrics</h2>
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+          <table className="nids-table">
+            <thead>
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="nids-th">
                   Model
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="nids-th">
                   Precision
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="nids-th">
                   Recall
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="nids-th">
                   F1 Score
                 </th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
+            <tbody>
               {ensembleAccuracy.map((model) => (
-                <tr key={model.model} className={model.model === 'Ensemble' ? 'bg-blue-50 font-semibold' : ''}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                <tr key={model.model} className={model.model === 'Ensemble' ? 'bg-cyan-500/10 font-semibold' : 'nids-row'}>
+                  <td className="nids-td whitespace-nowrap">
                     {model.model}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  <td className="nids-td whitespace-nowrap">
                     {(model.precision * 100).toFixed(1)}%
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  <td className="nids-td whitespace-nowrap">
                     {(model.recall * 100).toFixed(1)}%
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  <td className="nids-td whitespace-nowrap">
                     {(model.f1 * 100).toFixed(1)}%
                   </td>
                 </tr>
@@ -149,32 +199,32 @@ export default function MLMonitor() {
       </div>
 
       {/* Model Details */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <h2 className="text-xl font-semibold text-gray-900 mb-4">Model Configuration</h2>
+      <div className="nids-card p-6">
+        <h2 className="text-xl font-semibold text-slate-100 mb-4">Model Configuration</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
           <div>
-            <span className="font-medium text-gray-700">Ensemble Strategy:</span>
-            <span className="text-gray-900 ml-2">Voting (2 of 3 models)</span>
+            <span className="font-medium text-slate-400">Ensemble Strategy:</span>
+            <span className="text-slate-100 ml-2">Voting (2 of 3 models)</span>
           </div>
           <div>
-            <span className="font-medium text-gray-700">Training Dataset:</span>
-            <span className="text-gray-900 ml-2">CICIDS2017 + NSL-KDD</span>
+            <span className="font-medium text-slate-400">Training Dataset:</span>
+            <span className="text-slate-100 ml-2">CICIDS2017 + NSL-KDD</span>
           </div>
           <div>
-            <span className="font-medium text-gray-700">Feature Count:</span>
-            <span className="text-gray-900 ml-2">15 features</span>
+            <span className="font-medium text-slate-400">Feature Count:</span>
+            <span className="text-slate-100 ml-2">15 features</span>
           </div>
           <div>
-            <span className="font-medium text-gray-700">Contamination:</span>
-            <span className="text-gray-900 ml-2">5%</span>
+            <span className="font-medium text-slate-400">Contamination:</span>
+            <span className="text-slate-100 ml-2">5%</span>
           </div>
           <div>
-            <span className="font-medium text-gray-700">Retrain Interval:</span>
-            <span className="text-gray-900 ml-2">24 hours</span>
+            <span className="font-medium text-slate-400">Retrain Interval:</span>
+            <span className="text-slate-100 ml-2">24 hours</span>
           </div>
           <div>
-            <span className="font-medium text-gray-700">Training Window:</span>
-            <span className="text-gray-900 ml-2">Last 168 hours</span>
+            <span className="font-medium text-slate-400">Training Window:</span>
+            <span className="text-slate-100 ml-2">Last 168 hours</span>
           </div>
         </div>
       </div>

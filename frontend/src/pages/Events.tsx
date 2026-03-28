@@ -20,6 +20,8 @@ export default function Events() {
 
   useEffect(() => {
     loadEvents();
+    const interval = setInterval(loadEvents, 5000); // Auto-refresh
+    return () => clearInterval(interval);
   }, [filters]);
 
   const loadEvents = async () => {
@@ -31,6 +33,16 @@ export default function Events() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Calculate statistics
+  const stats = {
+    total: events.length,
+    acknowledged: events.filter(e => e.acknowledged).length,
+    critical: events.filter(e => e.severity === 'CRITICAL').length,
+    high: events.filter(e => e.severity === 'HIGH').length,
+    medium: events.filter(e => e.severity === 'MEDIUM').length,
+    low: events.filter(e => e.severity === 'LOW').length,
   };
 
   const handleAcknowledge = async (eventId: number) => {
@@ -60,20 +72,20 @@ export default function Events() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="nids-page">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold text-gray-900">Security Events</h1>
+        <h1 className="nids-title">Security Events</h1>
         <div className="flex gap-2">
           <button
             onClick={() => handleExport('csv')}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            className="nids-btn-secondary"
           >
             <Download className="w-4 h-4" />
             Export CSV
           </button>
           <button
             onClick={() => handleExport('json')}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            className="nids-btn-primary"
           >
             <Download className="w-4 h-4" />
             Export JSON
@@ -81,15 +93,43 @@ export default function Events() {
         </div>
       </div>
 
+      {/* Summary Statistics */}
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+        <div className="nids-kpi">
+          <div className="text-2xl font-bold text-slate-100">{stats.total}</div>
+          <div className="text-sm text-slate-400">Total Events</div>
+        </div>
+        <div className="nids-kpi border border-rose-500/30">
+          <div className="text-2xl font-bold text-rose-300">{stats.critical}</div>
+          <div className="text-sm text-rose-300">Critical</div>
+        </div>
+        <div className="nids-kpi border border-orange-500/30">
+          <div className="text-2xl font-bold text-orange-300">{stats.high}</div>
+          <div className="text-sm text-orange-300">High</div>
+        </div>
+        <div className="nids-kpi border border-amber-500/30">
+          <div className="text-2xl font-bold text-amber-300">{stats.medium}</div>
+          <div className="text-sm text-amber-300">Medium</div>
+        </div>
+        <div className="nids-kpi border border-emerald-500/30">
+          <div className="text-2xl font-bold text-emerald-300">{stats.low}</div>
+          <div className="text-sm text-emerald-300">Low</div>
+        </div>
+        <div className="nids-kpi border border-cyan-500/30">
+          <div className="text-2xl font-bold text-cyan-300">{stats.acknowledged}</div>
+          <div className="text-sm text-cyan-300">Acknowledged</div>
+        </div>
+      </div>
+
       {/* Filters */}
-      <div className="bg-white rounded-lg shadow p-4">
+      <div className="nids-card p-4">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Severity</label>
+            <label className="nids-label">Severity</label>
             <select
               value={filters.severity}
               onChange={(e) => setFilters({ ...filters, severity: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              className="nids-input"
             >
               <option value="">All</option>
               <option value="LOW">Low</option>
@@ -99,78 +139,78 @@ export default function Events() {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Source IP</label>
+            <label className="nids-label">Source IP</label>
             <input
               type="text"
               value={filters.src_ip}
               onChange={(e) => setFilters({ ...filters, src_ip: e.target.value })}
               placeholder="Filter by IP..."
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              className="nids-input"
             />
           </div>
         </div>
       </div>
 
       {/* Events Table */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
+      <div className="nids-table-wrap">
+        <table className="nids-table">
+          <thead>
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="nids-th">
                 Time
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="nids-th">
                 Severity
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="nids-th">
                 Source
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="nids-th">
                 Destination
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="nids-th">
                 Rule
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="nids-th">
                 Actions
               </th>
             </tr>
           </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
+          <tbody>
             {events.map((event) => (
               <>
-                <tr key={event.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                <tr key={event.id} className="nids-row">
+                  <td className="nids-td whitespace-nowrap">
                     {format(new Date(event.timestamp), 'MMM dd, HH:mm:ss')}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="nids-td whitespace-nowrap">
                     <span className={clsx('px-2 py-1 text-xs font-semibold rounded-full', SEVERITY_COLORS[event.severity])}>
                       {event.severity}
                     </span>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  <td className="nids-td whitespace-nowrap">
                     {event.src_ip}:{event.src_port}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  <td className="nids-td whitespace-nowrap">
                     {event.dst_ip}:{event.dst_port}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                  <td className="nids-td whitespace-nowrap text-slate-400">
                     {event.rule_triggered || '-'}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                  <td className="nids-td whitespace-nowrap text-sm font-medium">
                     <div className="flex items-center gap-2">
                       {!event.acknowledged && (
                         <button
                           onClick={() => handleAcknowledge(event.id)}
-                          className="text-blue-600 hover:text-blue-800"
+                          className="text-cyan-300 hover:text-cyan-200"
                         >
                           <CheckCircle className="w-5 h-5" />
                         </button>
                       )}
-                      <button
-                        onClick={() => setExpandedId(expandedId === event.id ? null : event.id)}
-                        className="text-gray-600 hover:text-gray-800"
-                      >
+                        <button
+                          onClick={() => setExpandedId(expandedId === event.id ? null : event.id)}
+                          className="text-slate-400 hover:text-slate-200"
+                        >
                         {expandedId === event.id ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
                       </button>
                     </div>
@@ -178,23 +218,23 @@ export default function Events() {
                 </tr>
                 {expandedId === event.id && (
                   <tr>
-                    <td colSpan={6} className="px-6 py-4 bg-gray-50">
+                    <td colSpan={6} className="px-6 py-4 bg-slate-900/40">
                       <div className="grid grid-cols-2 gap-4 text-sm">
                         <div>
-                          <span className="font-medium text-gray-700">Protocol:</span> {event.protocol}
+                          <span className="font-medium text-slate-400">Protocol:</span> {event.protocol}
                         </div>
                         <div>
-                          <span className="font-medium text-gray-700">Country:</span> {event.country_code || 'Unknown'}
+                          <span className="font-medium text-slate-400">Country:</span> {event.country_code || 'Unknown'}
                         </div>
                         <div>
-                          <span className="font-medium text-gray-700">ML Score:</span> {event.ml_score?.toFixed(3) || 'N/A'}
+                          <span className="font-medium text-slate-400">ML Score:</span> {event.ml_score?.toFixed(3) || 'N/A'}
                         </div>
                         <div>
-                          <span className="font-medium text-gray-700">Threat Intel:</span> {event.threat_intel_score || 'N/A'}
+                          <span className="font-medium text-slate-400">Threat Intel:</span> {event.threat_intel_score || 'N/A'}
                         </div>
                         {event.description && (
                           <div className="col-span-2">
-                            <span className="font-medium text-gray-700">Description:</span> {event.description}
+                            <span className="font-medium text-slate-400">Description:</span> {event.description}
                           </div>
                         )}
                       </div>

@@ -1,5 +1,20 @@
 services:
   # ------------------------------------------------------------------ #
+  # RabbitMQ
+  # ------------------------------------------------------------------ #
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    restart: unless-stopped
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ------------------------------------------------------------------ #
   # PostgreSQL
   # ------------------------------------------------------------------ #
   postgres:
@@ -48,6 +63,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     environment:
       NIDS_DB_URL: postgresql://nids:${NIDS_DB_PASSWORD:-changeme}@postgres:5432/nids
       NIDS_DB_ECHO: "false"
@@ -70,6 +87,13 @@ services:
       NIDS_SYSLOG_HOST: ${NIDS_SYSLOG_HOST:-syslog}
       NIDS_SYSLOG_PORT: ${NIDS_SYSLOG_PORT:-514}
       NIDS_THREATINTEL_ABUSEIPDB_API_KEY: ${NIDS_THREATINTEL_ABUSEIPDB_API_KEY:-}
+      NIDS_BROKER_ENABLED: ${NIDS_BROKER_ENABLED:-true}
+      NIDS_BROKER_BACKEND: ${NIDS_BROKER_BACKEND:-rabbitmq}
+      NIDS_BROKER_RABBITMQ_URL: ${NIDS_BROKER_RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
+      NIDS_BROKER_EXCHANGE: ${NIDS_BROKER_EXCHANGE:-nids.events}
+      NIDS_BROKER_QUEUE: ${NIDS_BROKER_QUEUE:-nids.events.queue}
+      NIDS_BROKER_ROUTING_KEY: ${NIDS_BROKER_ROUTING_KEY:-nids.event.detected}
+      NIDS_BROKER_PREFETCH_COUNT: ${NIDS_BROKER_PREFETCH_COUNT:-100}
       REDIS_HOST: redis
       REDIS_PORT: 6379
     ports:

@@ -279,8 +279,9 @@ class ThreatIntelEngine:
         cache_ttl_seconds: int = 3600,
         escalation_threshold: int = 50,
     ):
+        self.blocklist_dir = blocklist_dir or Path("config/blocklists")
         self.abuseipdb = AbuseIPDBClient(abuseipdb_api_key) if abuseipdb_api_key else None
-        self.blocklist = BlocklistLoader(blocklist_dir or Path("config/blocklists"))
+        self.blocklist = BlocklistLoader(self.blocklist_dir)
         self.cache = TTLCache(ttl_seconds=cache_ttl_seconds)
         self.escalation_threshold = escalation_threshold
         self._redis_client = None

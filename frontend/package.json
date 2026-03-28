@@ -9,15 +9,16 @@
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
   },
   "dependencies": {
+    "axios": "^1.6.8",
+    "clsx": "^2.1.0",
+    "date-fns": "^3.6.0",
+    "lucide-react": "^0.356.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.22.3",
-    "axios": "^1.6.8",
-    "recharts": "^2.12.2",
     "react-simple-maps": "^3.0.0",
-    "lucide-react": "^0.356.0",
-    "clsx": "^2.1.0",
-    "date-fns": "^3.6.0"
+    "recharts": "^2.12.2",
+    "world-atlas": "^2.0.2"
   },
   "devDependencies": {
     "@types/react": "^18.3.1",

@@ -49,9 +49,11 @@ A real-time, industry-grade Network Intrusion Detection System built with Python
 - **ML Anomaly Detection** — Ensemble voting (IsolationForest + RandomForest + LOF) with 15 features
 - **Threat Intelligence** — AbuseIPDB API + local blocklists with Redis caching
 - **Async Pipeline** — asyncio-based producer/consumer with backpressure handling
+- **Message Broker** — RabbitMQ event bus (optional, production decoupling)
 - **REST API** — FastAPI with JWT auth, rate limiting, correlation IDs, OpenAPI docs
 - **Rich Notifications** — Email, Slack, PagerDuty, Teams, Syslog (RFC 5424)
 - **PCAP Forensics** — Capture surrounding packets for HIGH/CRITICAL events
+- **Case Management** — Track investigations with case records, notes, and linked intrusion events
 - **Docker Ready** — Multi-stage builds, docker-compose with PostgreSQL + Redis
 - **CI/CD** — GitHub Actions with lint, test, security scan, and build
 
@@ -119,6 +121,7 @@ docker-compose up -d
 # API: http://localhost:8000
 # Docs: http://localhost:8000/docs
 # Dashboard: http://localhost:3000
+# RabbitMQ UI: http://localhost:15672 (guest/guest)
 ```
 
 ---
@@ -162,6 +165,9 @@ All settings via environment variables (see `.env.example`):
 | `NIDS_TEAMS_*` | Microsoft Teams webhook | disabled |
 | `NIDS_SYSLOG_*` | Syslog host/port | disabled |
 | `NIDS_THREATINTEL__ABUSEIPDB_API_KEY` | AbuseIPDB API key | none |
+| `NIDS_BROKER_ENABLED` | Enable broker transport | `true` |
+| `NIDS_BROKER_BACKEND` | Broker backend (`rabbitmq`/`none`) | `rabbitmq` |
+| `NIDS_BROKER_RABBITMQ_URL` | AMQP URL | `amqp://guest:guest@rabbitmq:5672/` |
 
 ---
 
@@ -177,31 +183,95 @@ curl -X POST http://localhost:8000/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username": "admin", "password": "admin"}'
 
+# Register
+curl -X POST http://localhost:8000/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"username":"alice","email":"alice@example.com","password":"strongpass123"}'
+
 # Use token
 TOKEN="your-jwt-token"
 curl http://localhost:8000/api/v1/events \
   -H "Authorization: Bearer $TOKEN"
 ```
 
+### Roles & Permissions (RBAC)
+
+- **viewer**: read-only access (events/cases read, stats, rules read, metrics, threat intel, blocklist read)
+- **analyst**: viewer + case create/update/notes/event-linking, event acknowledge, blocklist add, system reload, profile update/password change
+- **admin**: full access, including rule CRUD/toggle, event delete/export, user registration/admin actions
+
+Unauthorized role access returns **403 Forbidden** with a clear permission message.  
+`/api/v1/health` remains public (no auth required).
+
 ### Key Endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
+| POST | `/api/v1/auth/login` | Login and receive JWT |
+| POST | `/api/v1/auth/register` | Create user account (admin only) |
+| GET | `/api/v1/auth/me` | Current user profile |
+| PUT | `/api/v1/auth/me` | Update user profile |
+| POST | `/api/v1/auth/change-password` | Change current user password |
 | GET | `/api/v1/health` | System health (no auth) |
 | GET | `/api/v1/events` | Paginated events |
 | GET | `/api/v1/events/{id}` | Single event |
-| POST | `/api/v1/events/{id}/acknowledge` | Acknowledge event |
+| POST | `/api/v1/events/{id}/acknowledge` | Acknowledge event (analyst/admin) |
+| POST | `/api/v1/cases` | Create case (analyst/admin) |
+| GET | `/api/v1/cases` | List/filter cases (viewer+) |
+| GET | `/api/v1/cases/{id}` | Case detail with notes + linked events (viewer+) |
+| PUT | `/api/v1/cases/{id}` | Update case (analyst/admin) |
+| POST | `/api/v1/cases/{id}/notes` | Add case note (analyst/admin) |
+| POST | `/api/v1/cases/{id}/events/{event_id}` | Link event to case (analyst/admin) |
+| DELETE | `/api/v1/cases/{id}/events/{event_id}` | Unlink event from case (analyst/admin) |
 | GET | `/api/v1/stats` | Aggregated statistics |
 | GET | `/api/v1/rules` | List detection rules |
-| POST | `/api/v1/rules` | Create new rule |
-| PUT | `/api/v1/rules/{id}` | Update rule |
-| POST | `/api/v1/rules/{id}/toggle` | Enable/disable rule |
+| POST | `/api/v1/rules` | Create new rule (admin only) |
+| PUT | `/api/v1/rules/{id}` | Update rule (admin only) |
+| POST | `/api/v1/rules/{id}/toggle` | Enable/disable rule (admin only) |
+| GET | `/api/v1/playbooks` | List response playbooks |
+| POST | `/api/v1/playbooks` | Create playbook (admin only) |
+| GET | `/api/v1/playbooks/{id}` | Get playbook details |
+| PUT | `/api/v1/playbooks/{id}` | Update playbook (admin only) |
+| DELETE | `/api/v1/playbooks/{id}` | Delete playbook (admin only) |
+| POST | `/api/v1/playbooks/{id}/toggle` | Enable/disable playbook (admin only) |
+| POST | `/api/v1/playbooks/{id}/test` | Run test execution with sample payload |
+| GET | `/api/v1/playbooks/{id}/executions` | List playbook execution records |
+| POST | `/api/v1/playbooks/execute/event/{event_id}` | Manually execute matching playbooks for an event |
+| POST | `/api/v1/playbooks/execute/case/{case_id}` | Manually execute enabled playbooks for a case |
+| POST | `/api/v1/playbooks/integrations/ticket` | Upsert ticket provider config (admin only) |
+| GET | `/api/v1/playbooks/integrations/ticket/{provider}` | Read ticket provider config |
 | GET | `/api/v1/alerts/blocklist` | Current blocklist |
-| POST | `/api/v1/alerts/blocklist` | Add IP to blocklist |
+| POST | `/api/v1/alerts/blocklist` | Add IP to blocklist (analyst/admin) |
 | GET | `/api/v1/system/metrics` | CPU, memory, queue depth |
-| POST | `/api/v1/system/reload` | Hot-reload rules |
-| GET | `/api/v1/export/events?format=csv` | Export events |
+| GET | `/api/v1/system/slo` | SLO summary (availability, latency, queue trend, connectivity, error budget) |
+| GET | `/api/v1/system/slo/history` | Lightweight historical SLO snapshots |
+| GET | `/api/v1/system/retention/policies` | List retention policies (tenant-aware, optional header) |
+| POST | `/api/v1/system/retention/policies` | Create retention policy (admin only) |
+| PUT | `/api/v1/system/retention/policies/{id}` | Update retention policy (admin only) |
+| DELETE | `/api/v1/system/retention/policies/{id}` | Delete retention policy (admin only) |
+| POST | `/api/v1/system/retention/dry-run` | Non-destructive retention preview |
+| POST | `/api/v1/system/retention/execute` | Execute retention maintenance (admin only) |
+| POST | `/api/v1/system/backup/start` | Start backup runbook operation stub (admin only) |
+| GET | `/api/v1/system/backup/history` | Backup/restore operation history |
+| POST | `/api/v1/system/backup/restore-test` | Trigger restore-test runbook stub (admin only) |
+| POST | `/api/v1/system/reload` | Hot-reload rules (analyst/admin) |
+| GET | `/api/v1/export/events?format=csv` | Export events (admin only) |
 | GET | `/api/v1/events/{id}/pcap` | Download PCAP |
+
+### Playbook Safety Notes
+
+- Playbook execution is additive and non-blocking: qualifying event-driven runs are queued asynchronously.
+- Destructive action handlers are safety-gated by environment flags:
+  - `NIDS_PLAYBOOK_ALLOW_ADD_TO_BLOCKLIST=true` to permit automatic blocklist writes.
+- Ticket creation action is currently an integration-safe stub and requires provider config in DB; no secrets are hardcoded.
+- Every action execution is persisted in `playbook_executions` and audited through `audit_log`.
+
+### Platform Hardening Safety Notes
+
+- Retention execution is safe-by-default: deletion is disabled unless `apply_delete=true` **and** `confirm_delete=true`.
+- Retention dry-run is always non-destructive and reports archive/delete candidates before execution.
+- Backup and restore-test APIs are operational hooks/stubs in this environment; they record metadata only (no destructive DB restore or dump command by default).
+- Platform hardening entities (`retention_policies`, `slo_snapshots`, `backup_operations`) support optional tenant context via `X-Tenant-ID` while preserving single-tenant behavior when absent.
 
 ---
 

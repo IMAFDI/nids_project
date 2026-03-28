@@ -192,6 +192,22 @@ class RateLimitSettings(BaseSettings):
 
 
 # ---------------------------------------------------------------------------
+# Message broker settings
+# ---------------------------------------------------------------------------
+
+class BrokerSettings(BaseSettings):
+    enabled: bool = Field(default=False)
+    backend: Literal["rabbitmq", "none"] = Field(default="none")
+    rabbitmq_url: str = Field(default="amqp://guest:guest@localhost:5672/")
+    exchange: str = Field(default="nids.events")
+    queue: str = Field(default="nids.events.queue")
+    routing_key: str = Field(default="nids.event.detected")
+    prefetch_count: int = Field(default=100, ge=1)
+
+    model_config = SettingsConfigDict(env_prefix="NIDS_BROKER_")
+
+
+# ---------------------------------------------------------------------------
 # Root settings
 # ---------------------------------------------------------------------------
 
@@ -203,6 +219,7 @@ class Settings(BaseSettings):
     api: APISettings = Field(default_factory=APISettings)
     threat_intel: ThreatIntelSettings = Field(default_factory=ThreatIntelSettings)
     rate_limits: RateLimitSettings = Field(default_factory=RateLimitSettings)
+    broker: BrokerSettings = Field(default_factory=BrokerSettings)
 
     model_config = SettingsConfigDict(
         env_file=(".env",),

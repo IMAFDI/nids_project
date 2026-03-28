@@ -18,6 +18,7 @@ import re
 import time
 import logging
 import ipaddress
+import hashlib
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any
@@ -48,10 +49,13 @@ class Rule:
     name: str
     rule_type: str
     enabled: bool = True
+    lifecycle_state: str = "production"  # draft | staging | production
     version: int = 1
     priority: str = "MEDIUM"  # LOW | MEDIUM | HIGH | CRITICAL
     criteria: dict = field(default_factory=dict)
     description: str = ""
+    suppression_enabled: bool = False
+    suppression_window_seconds: int = 0
     # State for rate limiting
     _counters: dict = field(default_factory=lambda: defaultdict(list))
     _last_reset: float = field(default_factory=time.time)
@@ -141,6 +145,7 @@ def _json_rule_to_rule(rule_json: dict) -> Rule:
         name=rule_json.get("name", rule_json.get("description", "")),
         rule_type=rule_json.get("rule_type", RULE_TYPE_SIGNATURE),
         enabled=rule_json.get("enabled", True),
+        lifecycle_state=rule_json.get("lifecycle_state", "production"),
         version=rule_json.get("version", 1),
         priority=rule_json.get("priority", "MEDIUM"),
         criteria={
@@ -158,6 +163,8 @@ def _json_rule_to_rule(rule_json: dict) -> Rule:
             "countries": rule_json.get("countries", []),
         },
         description=rule_json.get("description", ""),
+        suppression_enabled=rule_json.get("suppression_enabled", False),
+        suppression_window_seconds=rule_json.get("suppression_window_seconds", 0),
     )
 
 
@@ -175,6 +182,7 @@ class SignatureDetector:
         self._whitelist: set[str] = set()
         self._whitelist_subnets: list = []
         self._rate_tracker: dict[str, list[float]] = defaultdict(list)
+        self._suppression_tracker: dict[tuple[int | str, str], float] = {}
 
         if rules:
             for r in rules:
@@ -445,22 +453,52 @@ class SignatureDetector:
         for rule in self._rules.values():
             if not rule.enabled:
                 continue
+            if rule.lifecycle_state != "production":
+                continue
 
             try:
                 if rule.rule_type == RULE_TYPE_SIGNATURE:
-                    matches.extend(self._evaluate_signature_rule(rule, packet, ip))
+                    rule_matches = self._evaluate_signature_rule(rule, packet, ip)
+                    matches.extend(self._apply_suppression(rule, rule_matches))
                 elif rule.rule_type == RULE_TYPE_RATE_LIMIT:
-                    matches.extend(self._evaluate_rate_limit_rule(rule, packet, ip))
+                    rule_matches = self._evaluate_rate_limit_rule(rule, packet, ip)
+                    matches.extend(self._apply_suppression(rule, rule_matches))
                 elif rule.rule_type == RULE_TYPE_PAYLOAD_MATCH:
-                    matches.extend(self._evaluate_payload_match_rule(rule, packet, ip))
+                    rule_matches = self._evaluate_payload_match_rule(rule, packet, ip)
+                    matches.extend(self._apply_suppression(rule, rule_matches))
                 elif rule.rule_type == RULE_TYPE_GEO_BLOCK:
-                    matches.extend(self._evaluate_geo_block_rule(rule, packet, ip))
+                    rule_matches = self._evaluate_geo_block_rule(rule, packet, ip)
+                    matches.extend(self._apply_suppression(rule, rule_matches))
                 elif rule.rule_type == RULE_TYPE_WHITELIST:
                     matches.extend(self._evaluate_whitelist_rule(rule, packet, ip))
             except Exception as e:
                 logger.warning(f"Error evaluating rule {rule.id}: {e}")
 
         return matches
+
+    def _suppression_fingerprint(self, rule_id: int | str, src_ip: str, dst_ip: str, protocol: str) -> str:
+        raw = f"{rule_id}|{src_ip}|{dst_ip}|{protocol}"
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+    def _apply_suppression(self, rule: Rule, rule_matches: list[dict]) -> list[dict]:
+        if not rule_matches:
+            return []
+        if not rule.suppression_enabled or (rule.suppression_window_seconds or 0) <= 0:
+            return rule_matches
+
+        now = time.time()
+        allowed_matches: list[dict] = []
+        for match in rule_matches:
+            src_ip = str(match.get("src_ip") or "")
+            dst_ip = str(match.get("dst_ip") or "")
+            protocol = str(match.get("protocol") or "").lower()
+            fp = self._suppression_fingerprint(rule.id, src_ip, dst_ip, protocol)
+            key = (rule.id, fp)
+            last_seen = self._suppression_tracker.get(key)
+            self._suppression_tracker[key] = now
+            if last_seen is None or (now - last_seen) > rule.suppression_window_seconds:
+                allowed_matches.append(match)
+        return allowed_matches
 
 
 # ---------------------------------------------------------------------------

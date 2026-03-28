@@ -7,6 +7,7 @@ Integration tests for all FastAPI endpoints.
 import pytest
 import os
 import sys
+from contextlib import ExitStack
 from unittest.mock import patch, MagicMock
 
 # Add config to path
@@ -21,21 +22,35 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "config"))
 @pytest.fixture
 def mock_db():
     """Mock database functions."""
-    with patch("api.main.init_db") as mock_init, \
-         patch("api.main.get_recent_events") as mock_recent, \
-         patch("api.main.get_stats") as mock_stats, \
-         patch("api.main.search_events") as mock_search, \
-         patch("api.main.acknowledge_event") as mock_ack, \
-         patch("api.main.delete_event") as mock_delete, \
-         patch("api.main.clear_events") as mock_clear, \
-         patch("api.main.get_rules") as mock_get_rules, \
-         patch("api.main.get_rule") as mock_get_rule, \
-         patch("api.main.create_rule") as mock_create_rule, \
-         patch("api.main.update_rule") as mock_update_rule, \
-         patch("api.main.delete_rule") as mock_delete_rule, \
-         patch("api.main.toggle_rule") as mock_toggle_rule, \
-         patch("api.main.log_audit") as mock_audit, \
-         patch("api.main.get_threat_intel_engine") as mock_ti:
+    with ExitStack() as stack:
+        mock_init = stack.enter_context(patch("api.main.init_db"))
+        mock_recent = stack.enter_context(patch("api.main.get_recent_events"))
+        mock_stats = stack.enter_context(patch("api.main.get_stats"))
+        mock_search = stack.enter_context(patch("api.main.search_events"))
+        mock_ack = stack.enter_context(patch("api.main.acknowledge_event"))
+        mock_delete = stack.enter_context(patch("api.main.delete_event"))
+        mock_clear = stack.enter_context(patch("api.main.clear_events"))
+        mock_get_rules = stack.enter_context(patch("api.main.get_rules"))
+        mock_get_rule = stack.enter_context(patch("api.main.get_rule"))
+        mock_create_rule = stack.enter_context(patch("api.main.create_rule"))
+        mock_update_rule = stack.enter_context(patch("api.main.update_rule"))
+        mock_delete_rule = stack.enter_context(patch("api.main.delete_rule"))
+        mock_toggle_rule = stack.enter_context(patch("api.main.toggle_rule"))
+        mock_rules_mitre = stack.enter_context(patch("api.main.get_rules_by_mitre"))
+        mock_audit = stack.enter_context(patch("api.main.log_audit"))
+        mock_ti = stack.enter_context(patch("api.main.get_threat_intel_engine"))
+        mock_list_retention_policies = stack.enter_context(patch("api.main.list_retention_policies"))
+        mock_create_retention_policy = stack.enter_context(patch("api.main.create_retention_policy"))
+        mock_get_retention_policy = stack.enter_context(patch("api.main.get_retention_policy"))
+        mock_update_retention_policy = stack.enter_context(patch("api.main.update_retention_policy"))
+        mock_delete_retention_policy = stack.enter_context(patch("api.main.delete_retention_policy"))
+        mock_retention_preview = stack.enter_context(patch("api.main.retention_maintenance_preview"))
+        mock_retention_execute = stack.enter_context(patch("api.main.execute_retention_maintenance"))
+        mock_create_slo_snapshot = stack.enter_context(patch("api.main.create_slo_snapshot"))
+        mock_list_slo_snapshots = stack.enter_context(patch("api.main.list_slo_snapshots"))
+        mock_create_backup_operation = stack.enter_context(patch("api.main.create_backup_operation"))
+        mock_list_backup_operations = stack.enter_context(patch("api.main.list_backup_operations"))
+        mock_raw_connection = stack.enter_context(patch("api.main.get_raw_connection"))
         yield {
             "init": mock_init,
             "recent": mock_recent,
@@ -50,8 +65,21 @@ def mock_db():
             "update_rule": mock_update_rule,
             "delete_rule": mock_delete_rule,
             "toggle_rule": mock_toggle_rule,
+            "rules_mitre": mock_rules_mitre,
             "audit": mock_audit,
             "threat_intel": mock_ti,
+            "list_retention_policies": mock_list_retention_policies,
+            "create_retention_policy": mock_create_retention_policy,
+            "get_retention_policy": mock_get_retention_policy,
+            "update_retention_policy": mock_update_retention_policy,
+            "delete_retention_policy": mock_delete_retention_policy,
+            "retention_preview": mock_retention_preview,
+            "retention_execute": mock_retention_execute,
+            "create_slo_snapshot": mock_create_slo_snapshot,
+            "list_slo_snapshots": mock_list_slo_snapshots,
+            "create_backup_operation": mock_create_backup_operation,
+            "list_backup_operations": mock_list_backup_operations,
+            "raw_connection": mock_raw_connection,
         }
 
 
@@ -122,12 +150,12 @@ def test_login_success(client, mock_db):
 def test_login_invalid_credentials(client, mock_db):
     """Invalid credentials should return 401."""
     resp = client.post("/api/v1/auth/login", json={"username": "admin", "password": "wrong"})
-        assert resp.status_code == 401
+    assert resp.status_code == 401
 
 
 # ---------------------------------------------------------------------------
 # Events (protected)
-// ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 
 def test_list_events_requires_auth(client, mock_db):
     """Events endpoint should require authentication."""
@@ -222,7 +250,7 @@ def test_stats_endpoint(client, mock_db, auth_token):
 
 # ---------------------------------------------------------------------------
 # Rules (protected)
-// ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 
 def test_list_rules(client, mock_db, auth_token):
     """Rules endpoint should list all rules."""
@@ -316,9 +344,47 @@ def test_toggle_rule(client, mock_db, auth_token):
     assert resp.status_code == 200
 
 
+def test_filter_rules_by_mitre(client, mock_db, auth_token):
+    """Should filter rules by MITRE technique."""
+    mock_db["rules_mitre"].return_value = [
+        {"id": 1, "name": "MITRE Rule", "rule_type": "SIGNATURE", "enabled": True,
+         "version": 1, "priority": "HIGH", "description": "Mapped rule", "criteria": {},
+         "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z",
+         "last_matched": None, "match_count": 0, "lifecycle_state": "production",
+         "mitre_tactics": ["credential-access"], "mitre_techniques": ["T1110"],
+         "suppression_enabled": False, "suppression_window_seconds": 0}
+    ]
+    resp = client.get(
+        "/api/v1/rules/mitre?technique=T1110",
+        headers={"Authorization": f"Bearer {auth_token}"}
+    )
+    assert resp.status_code == 200
+    assert len(resp.json()) == 1
+
+
+def test_promote_rule_lifecycle(client, mock_db, auth_token):
+    """Should promote rule lifecycle state."""
+    mock_db["update_rule"].return_value = True
+    mock_db["get_rule"].return_value = {
+        "id": 1, "name": "Rule", "rule_type": "SIGNATURE", "enabled": True,
+        "version": 2, "priority": "MEDIUM", "description": "Rule", "criteria": {},
+        "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z",
+        "last_matched": None, "match_count": 0, "lifecycle_state": "staging",
+        "mitre_tactics": [], "mitre_techniques": [], "suppression_enabled": False,
+        "suppression_window_seconds": 0
+    }
+    resp = client.post(
+        "/api/v1/rules/1/lifecycle",
+        headers={"Authorization": f"Bearer {auth_token}"},
+        json={"lifecycle_state": "staging"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["lifecycle_state"] == "staging"
+
+
 # ---------------------------------------------------------------------------
 # Blocklist (protected)
-// ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 
 def test_get_blocklist(client, mock_db, auth_token):
     """Should retrieve the blocklist."""
@@ -354,7 +420,7 @@ def test_add_to_blocklist(client, mock_db, auth_token):
 
 # ---------------------------------------------------------------------------
 # Export
-// ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 
 def test_export_events_csv(client, mock_db, auth_token):
     """Should export events as CSV."""
@@ -388,7 +454,7 @@ def test_export_events_json(client, mock_db, auth_token):
 
 # ---------------------------------------------------------------------------
 # System / reload
-// ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 
 def test_reload_rules(client, mock_db, auth_token):
     """Hot reload should reload rules and blocklists."""
@@ -401,3 +467,81 @@ def test_reload_rules(client, mock_db, auth_token):
     )
     assert resp.status_code == 200
     assert resp.json()["ok"] is True
+
+
+def test_slo_summary_shape(client, mock_db, auth_token):
+    mock_db["list_slo_snapshots"].return_value = [{
+        "id": 1,
+        "tenant_id": None,
+        "ingestion_availability": 100,
+        "latency_p50_ms": 1,
+        "latency_p95_ms": 2,
+        "queue_depth": 0,
+        "queue_trend": "stable",
+        "broker_state": "disabled",
+        "db_state": "up",
+        "cache_state": "degraded",
+        "error_budget_remaining": 100,
+        "created_at": "2026-01-01T00:00:00Z",
+    }]
+    mock_conn = MagicMock()
+    mock_cursor = MagicMock()
+    mock_cursor.fetchone.return_value = (1,)
+    mock_conn.cursor.return_value = mock_cursor
+    mock_db["raw_connection"].return_value = mock_conn
+
+    resp = client.get(
+        "/api/v1/system/slo",
+        headers={"Authorization": f"Bearer {auth_token}"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "ingestion_availability" in data
+    assert "event_processing_latency_ms" in data
+    assert "queue_depth_trend" in data
+    assert "connectivity" in data
+    assert "error_budget_remaining" in data
+
+
+def test_retention_delete_confirmation_required(client, mock_db, auth_token):
+    resp = client.post(
+        "/api/v1/system/retention/execute",
+        headers={"Authorization": f"Bearer {auth_token}"},
+        json={"apply_delete": True, "confirm_delete": False},
+    )
+    assert resp.status_code == 400
+
+
+def test_backup_hooks_admin(client, mock_db, auth_token):
+    mock_db["create_backup_operation"].return_value = {
+        "id": 7,
+        "operation_type": "backup_start",
+        "status": "success",
+        "duration_ms": 10,
+        "artifact_path": "logs/backups/test.meta",
+        "operation_metadata": {"dry_run": True},
+        "initiated_by": "admin",
+        "source_ip": "127.0.0.1",
+        "tenant_id": None,
+        "created_at": "2026-01-01T00:00:00Z",
+        "updated_at": "2026-01-01T00:00:00Z",
+    }
+
+    start_resp = client.post(
+        "/api/v1/system/backup/start",
+        headers={"Authorization": f"Bearer {auth_token}"},
+        json={"dry_run": True},
+    )
+    assert start_resp.status_code == 200
+
+    restore_resp = client.post(
+        "/api/v1/system/backup/restore-test",
+        headers={"Authorization": f"Bearer {auth_token}"},
+        json={"dry_run": True},
+    )
+    assert restore_resp.status_code == 200
+
+
+def test_backup_start_requires_auth(client, mock_db):
+    resp = client.post("/api/v1/system/backup/start", json={"dry_run": True})
+    assert resp.status_code == 403

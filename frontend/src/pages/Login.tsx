@@ -1,13 +1,16 @@
 import { useState } from 'react';
 import { Shield } from 'lucide-react';
-import { login } from '../lib/api';
+import { login, register } from '../lib/api';
 
 interface LoginProps {
   onLogin: () => void;
 }
 
 export default function Login({ onLogin }: LoginProps) {
+  const [mode, setMode] = useState<'login' | 'register'>('login');
   const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
+  const [fullName, setFullName] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -18,45 +21,103 @@ export default function Login({ onLogin }: LoginProps) {
     setLoading(true);
 
     try {
+      if (mode === 'register') {
+        await register({
+          username,
+          email,
+          password,
+          full_name: fullName || undefined,
+        });
+      }
       await login(username, password);
       onLogin();
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Login failed');
+      setError(err.response?.data?.detail || `${mode === 'login' ? 'Login' : 'Registration'} failed`);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gray-900 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
       <div className="max-w-md w-full">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-500 rounded-full mb-4">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-cyan-500 rounded-2xl mb-4 shadow-lg shadow-cyan-500/20">
             <Shield className="w-10 h-10 text-white" />
           </div>
           <h1 className="text-3xl font-bold text-white">NIDS Dashboard</h1>
-          <p className="text-gray-400 mt-2">Network Intrusion Detection System</p>
+          <p className="text-slate-400 mt-2">Security Operations Console</p>
         </div>
 
-        <div className="bg-gray-800 rounded-lg shadow-xl p-8">
+        <div className="nids-card p-8">
           <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="flex bg-slate-800 rounded-xl p-1">
+              <button
+                type="button"
+                onClick={() => setMode('login')}
+                className={`flex-1 py-2 text-sm rounded-lg ${mode === 'login' ? 'bg-cyan-500 text-slate-950 font-semibold' : 'text-slate-300'}`}
+              >
+                Login
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode('register')}
+                className={`flex-1 py-2 text-sm rounded-lg ${mode === 'register' ? 'bg-cyan-500 text-slate-950 font-semibold' : 'text-slate-300'}`}
+              >
+                Register
+              </button>
+            </div>
+
             <div>
-              <label htmlFor="username" className="block text-sm font-medium text-gray-300 mb-2">
-                Username
+              <label htmlFor="username" className="nids-label">
+                Username or Email
               </label>
               <input
                 id="username"
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Enter username"
+                className="nids-input"
+                placeholder="Enter username or email"
                 required
               />
             </div>
 
+            {mode === 'register' && (
+              <>
+                <div>
+                  <label htmlFor="email" className="nids-label">
+                    Email
+                  </label>
+                  <input
+                    id="email"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="nids-input"
+                    placeholder="you@example.com"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="full-name" className="nids-label">
+                    Full Name (optional)
+                  </label>
+                  <input
+                    id="full-name"
+                    type="text"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    className="nids-input"
+                    placeholder="Your name"
+                  />
+                </div>
+              </>
+            )}
+
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-300 mb-2">
+              <label htmlFor="password" className="nids-label">
                 Password
               </label>
               <input
@@ -64,14 +125,15 @@ export default function Login({ onLogin }: LoginProps) {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="nids-input"
                 placeholder="Enter password"
+                minLength={8}
                 required
               />
             </div>
 
             {error && (
-              <div className="bg-red-900/50 border border-red-700 rounded-lg p-3 text-red-200 text-sm">
+              <div className="bg-rose-500/10 border border-rose-500/30 rounded-xl p-3 text-rose-300 text-sm">
                 {error}
               </div>
             )}
@@ -79,14 +141,14 @@ export default function Login({ onLogin }: LoginProps) {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white font-medium py-2 px-4 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-800"
+              className="nids-btn-primary w-full"
             >
-              {loading ? 'Logging in...' : 'Log In'}
+              {loading ? (mode === 'login' ? 'Logging in...' : 'Creating account...') : (mode === 'login' ? 'Log In' : 'Create Account')}
             </button>
           </form>
 
-          <div className="mt-6 text-center text-sm text-gray-400">
-            Default: admin / admin
+          <div className="mt-6 text-center text-sm text-slate-500">
+            Default admin: admin / admin
           </div>
         </div>
       </div>

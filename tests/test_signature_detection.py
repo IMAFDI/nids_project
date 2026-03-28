@@ -387,6 +387,46 @@ class TestRuleLifecycle:
         matches = detector.evaluate(pkt)
         assert len(matches) == 0  # Disabled rule should not match
 
+    def test_non_production_rule_not_evaluated(self):
+        """Draft/staging rules should not be evaluated."""
+        rules = [{
+            "id": 301,
+            "name": "Draft Rule",
+            "rule_type": "SIGNATURE",
+            "protocol": "any",
+            "src_ip": "any",
+            "dst_ip": "any",
+            "threshold": 1,
+            "time_window": 60,
+            "lifecycle_state": "draft",
+        }]
+        detector = SignatureDetector(rules)
+        pkt = make_ip_packet(src="10.0.0.1")
+        matches = detector.evaluate(pkt)
+        assert len(matches) == 0
+
+    def test_suppression_deduplicates_repeated_matches(self):
+        """Suppression should keep first match and suppress duplicates in window."""
+        rules = [{
+            "id": 302,
+            "name": "Suppressed Rule",
+            "rule_type": "SIGNATURE",
+            "protocol": "any",
+            "src_ip": "any",
+            "dst_ip": "any",
+            "threshold": 1,
+            "time_window": 60,
+            "lifecycle_state": "production",
+            "suppression_enabled": True,
+            "suppression_window_seconds": 10,
+        }]
+        detector = SignatureDetector(rules)
+        pkt = make_ip_packet(src="10.0.0.1", dst="5.6.7.8", proto=6, haslayer_TCP=True)
+        first = detector.evaluate(pkt)
+        second = detector.evaluate(pkt)
+        assert len(first) == 1
+        assert len(second) == 0
+
 
 class TestStatefulWindow:
     """Tests that the time window correctly expires old entries."""
